@@ -7,7 +7,7 @@
              x:DataType="vm:StashesViewModel">
 
     <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
+        <WrapPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
             <Button Content="Stash changes…" Command="{Binding StashChangesCommand}"
                     ToolTip.Tip="Save all changes (including untracked files) and clean the working tree" />
             <Separator />
@@ -16,7 +16,7 @@
             <Button Content="Drop" Command="{Binding DropCommand}" />
             <Separator />
             <Button Content="Compare (WinMerge)" Command="{Binding CompareCommand}" />
-        </StackPanel>
+        </WrapPanel>
         <Panel>
             <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedStash}"
                      views:ItemDoubleClick.Command="{Binding CompareCommand}">

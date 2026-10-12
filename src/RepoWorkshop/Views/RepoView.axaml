@@ -29,19 +29,19 @@
     <DockPanel Margin="16,8,16,12">
         <!-- Repository header -->
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <StackPanel DockPanel.Dock="Right" Classes="toolbar" VerticalAlignment="Center">
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0">
+                <TextBlock Classes="subtitle" Text="{Binding Name}" />
+                <TextBlock Classes="subtitle branch" Text="{Binding HeadText}" FontWeight="Normal" />
+                <TextBlock Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Bottom" />
+            </StackPanel>
+            <WrapPanel Classes="toolbar" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="60" MinWidth="0" VerticalAlignment="Center" />
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Content="Fetch" Command="{Binding FetchCommand}" />
                 <Button Content="Pull" Command="{Binding PullCommand}" ToolTip.Tip="Fast-forward only" />
                 <Button Content="Push" Command="{Binding PushCommand}" />
                 <Button Content="Open folder" Command="{Binding OpenInExplorerCommand}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <TextBlock Classes="subtitle" Text="{Binding Name}" />
-                <TextBlock Classes="subtitle branch" Text="{Binding HeadText}" FontWeight="Normal" />
-                <TextBlock Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Bottom" />
-            </StackPanel>
+            </WrapPanel>
         </DockPanel>
 
         <Border DockPanel.Dock="Top" IsVisible="{Binding HasError}" Padding="10,6" Margin="0,0,0,8" CornerRadius="4"
@@ -50,8 +50,13 @@
         </Border>
 
         <!-- Tabs on the left, the always-visible changes panel on the right -->
-        <Grid ColumnDefinitions="*,12,340">
-        <TabControl Grid.Column="0" Padding="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}">
+        <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*" MinWidth="250" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="2*" MinWidth="230" />
+        </Grid.ColumnDefinitions>
+        <TabControl Grid.Column="0" Padding="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}" ClipToBounds="True">
             <TabControl.Styles>
                 <Style Selector="TabItem">
                     <Setter Property="FontSize" Value="16" />
@@ -64,16 +69,15 @@
             </TabControl.Styles>
             <TabItem Header="Branches">
                 <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
+                    <WrapPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
                         <Button Content="Checkout" Command="{Binding CheckoutCommand}"
                                 ToolTip.Tip="Switch to the selected branch (a remote branch gets a local tracking branch)" />
                         <Button Content="New branch…" Command="{Binding NewBranchCommand}"
                                 ToolTip.Tip="Create a branch from the selected branch (or HEAD) and switch to it" />
                         <Button Content="Delete" Command="{Binding DeleteBranchCommand}" />
-                        <Separator />
                         <Button Content="Merge into current" Command="{Binding MergeIntoCurrentCommand}" />
                         <Button Content="Compare with current (WinMerge)" Command="{Binding CompareWithCurrentCommand}" />
-                    </StackPanel>
+                    </WrapPanel>
                     <TabControl SelectedIndex="{Binding BranchTabIndex}" Padding="0,4,0,0">
                         <TabItem Header="{Binding LocalBranches.Count, StringFormat='Local ({0})'}">
                             <ListBox x:Name="LocalBranchList" ItemsSource="{Binding LocalBranches}"

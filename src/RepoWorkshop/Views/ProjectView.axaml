@@ -28,7 +28,7 @@
             </WrapPanel>
         </StackPanel>
 
-        <Grid RowDefinitions="Auto,2*,Auto,3*">
+        <Grid RowDefinitions="Auto,Auto,Auto,*">
             <!-- Repository list -->
             <DockPanel Grid.Row="0" Margin="16,4,16,4">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
@@ -39,21 +39,31 @@
             </DockPanel>
 
             <Panel Grid.Row="1">
-                <ListBox ItemsSource="{Binding Repos}" SelectedItem="{Binding SelectedRepo}" Margin="8,0">
+                <ListBox ItemsSource="{Binding Repos}" SelectedItem="{Binding SelectedRepo}" Margin="8,0" MaxHeight="220"
+                         Grid.IsSharedSizeScope="True">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:RepoViewModel">
-                            <Grid Margin="0,2" ColumnDefinitions="*,220,110,100,90">
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="120" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="RepoBranch" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="RepoSync" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="RepoChanges" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="RepoStatus" />
+                                </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,16,0">
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Classes="small secondary" Text="{Binding Path}" TextTrimming="PrefixCharacterEllipsis"
                                                ToolTip.Tip="{Binding Path}" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="1" Classes="branch" Text="{Binding HeadText}"
-                                           VerticalAlignment="Center" Margin="0,0,12,0" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Classes="branch" Text="{Binding HeadText}" MaxWidth="220"
+                                           VerticalAlignment="Center" Margin="0,0,16,0" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding HeadText}" />
+                                <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Center"
+                                           Margin="0,0,16,0" />
                                 <TextBlock Grid.Column="3" Text="{Binding ChangesText}" Classes.secondary="{Binding !IsDirty}"
-                                           VerticalAlignment="Center" />
-                                <Panel Grid.Column="4" VerticalAlignment="Center">
+                                           VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Panel Grid.Column="4" VerticalAlignment="Center" Width="70">
                                     <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" MinWidth="0" />
                                     <TextBlock Classes="error small" Text="⚠ error" IsVisible="{Binding HasError}"
                                                ToolTip.Tip="{Binding Error}" />

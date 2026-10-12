@@ -9,12 +9,12 @@
         <!-- Unstaged -->
         <DockPanel Grid.Column="0">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+                <WrapPanel DockPanel.Dock="Right" Classes="toolbar">
                     <Button Content="Stage" Command="{Binding StageCommand}"
                             CommandParameter="{Binding #UnstagedList.SelectedItems}"
                             ToolTip.Tip="Stage the selected files (Ctrl/Shift-click to select several)" />
                     <Button Content="Stage all" Command="{Binding StageAllCommand}" IsEnabled="{Binding HasUnstaged}" />
-                </StackPanel>
+                </WrapPanel>
                 <TextBlock Classes="section" Text="{Binding Unstaged.Count, StringFormat='UNSTAGED ({0})'}" VerticalAlignment="Center" />
             </DockPanel>
             <Panel>
@@ -40,11 +40,11 @@
         <!-- Staged -->
         <DockPanel Grid.Column="2">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+                <WrapPanel DockPanel.Dock="Right" Classes="toolbar">
                     <Button Content="Unstage" Command="{Binding UnstageCommand}"
                             CommandParameter="{Binding #StagedList.SelectedItems}" />
                     <Button Content="Unstage all" Command="{Binding UnstageAllCommand}" IsEnabled="{Binding HasStaged}" />
-                </StackPanel>
+                </WrapPanel>
                 <TextBlock Classes="section" Text="{Binding Staged.Count, StringFormat='STAGED ({0})'}" VerticalAlignment="Center" />
             </DockPanel>
             <Panel>

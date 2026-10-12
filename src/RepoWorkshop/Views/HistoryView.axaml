@@ -8,12 +8,12 @@
 
     <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-            <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+            <WrapPanel DockPanel.Dock="Right" Classes="toolbar">
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Width="60" MinWidth="0" VerticalAlignment="Center" />
                 <Button Content="Compare commit (WinMerge)" Command="{Binding CompareCommitCommand}"
                         ToolTip.Tip="Everything the selected commit changed (double-click a commit)" />
                 <Button Content="Reload" Command="{Binding ReloadCommand}" />
-            </StackPanel>
+            </WrapPanel>
             <TextBlock Classes="section" Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        ToolTip.Tip="Select a branch on the Branches tab to see its history" />
         </DockPanel>
