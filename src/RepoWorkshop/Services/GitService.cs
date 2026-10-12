@@ -18,13 +18,19 @@ public sealed class GitService(LogService log)
 
     // Commands that only read state are not echoed to the log, to keep it focused on actions.
     private static readonly HashSet<string> QuietCommands =
-        ["status", "for-each-ref", "rev-parse", "diff", "cat-file", "merge-base", "check-ref-format", "remote"];
+        ["status", "for-each-ref", "rev-parse", "diff", "cat-file", "merge-base", "check-ref-format", "remote", "log"];
+
+    /// <summary>The well-known id of git's empty tree, used as the "parent" of a root commit.</summary>
+    public const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+    private static bool IsQuiet(IReadOnlyList<string> args) =>
+        args.Count > 0 && (QuietCommands.Contains(args[0]) || (args[0] == "stash" && args.Count > 1 && args[1] == "list"));
 
     public Task<GitResult> RunAsync(string repoPath, params string[] args) => RunAsync(repoPath, args, CancellationToken.None);
 
     public async Task<GitResult> RunAsync(string repoPath, IReadOnlyList<string> args, CancellationToken ct)
     {
-        var quiet = args.Count > 0 && QuietCommands.Contains(args[0]);
+        var quiet = IsQuiet(args);
         if (!quiet)
             log.Command($"[{Path.GetFileName(repoPath)}] git {string.Join(' ', args.Select(QuoteForDisplay))}");
 
@@ -113,7 +119,8 @@ public sealed class GitService(LogService log)
         string? branch = null, oid = null, upstream = null;
         var detached = false;
         int ahead = 0, behind = 0;
-        var changes = new List<FileChange>();
+        var staged = new List<FileChange>();
+        var unstaged = new List<FileChange>();
 
         var entries = output.Split('\0');
         for (var i = 0; i < entries.Length; i++)
@@ -152,7 +159,7 @@ public sealed class GitService(LogService log)
                 {
                     // 1 XY sub mH mI mW hH hI path
                     var f = entry.Split(' ', 9);
-                    changes.Add(FromXY(f[1], f[8], null));
+                    AddXY(f[1], f[8], null, staged, unstaged);
                     break;
                 }
                 case '2':
@@ -160,30 +167,35 @@ public sealed class GitService(LogService log)
                     // 2 XY sub mH mI mW hH hI Xscore path \0 origPath
                     var f = entry.Split(' ', 10);
                     var orig = i + 1 < entries.Length ? entries[++i] : null;
-                    changes.Add(FromXY(f[1], f[9], orig));
+                    AddXY(f[1], f[9], orig, staged, unstaged);
                     break;
                 }
                 case 'u':
                 {
                     // u XY sub m1 m2 m3 mW h1 h2 h3 path
                     var f = entry.Split(' ', 11);
-                    changes.Add(new FileChange(f[10], null, ChangeKind.Unmerged, f[1]));
+                    unstaged.Add(new FileChange(f[10], null, ChangeKind.Unmerged, f[1]));
                     break;
                 }
                 case '?':
-                    changes.Add(new FileChange(entry[2..], null, ChangeKind.Untracked, "??"));
+                    unstaged.Add(new FileChange(entry[2..], null, ChangeKind.Untracked, "??"));
                     break;
             }
         }
 
-        return new RepoStatus(branch, detached, oid, upstream, ahead, behind, changes);
+        return new RepoStatus(branch, detached, oid, upstream, ahead, behind, staged, unstaged);
     }
 
-    private static FileChange FromXY(string xy, string path, string? orig)
+    /// <summary>
+    /// Splits an XY status into its index (staged) and work-tree (unstaged) halves.
+    /// A rename is recorded on the index side; the work-tree side compares against the new path.
+    /// </summary>
+    private static void AddXY(string xy, string path, string? orig, List<FileChange> staged, List<FileChange> unstaged)
     {
-        // Renames come from the index; otherwise prefer the work-tree state over the staged one.
-        var c = xy[0] is 'R' or 'C' ? xy[0] : xy[1] != '.' ? xy[1] : xy[0];
-        return new FileChange(path, orig, FileChange.KindFromCode(c), xy.Replace('.', ' '));
+        if (xy[0] != '.')
+            staged.Add(new FileChange(path, orig, FileChange.KindFromCode(xy[0]), xy[0].ToString()));
+        if (xy[1] != '.')
+            unstaged.Add(new FileChange(path, null, FileChange.KindFromCode(xy[1]), xy[1].ToString()));
     }
 
     public async Task<IReadOnlyList<BranchInfo>> GetBranchesAsync(string repoPath)
@@ -299,7 +311,101 @@ public sealed class GitService(LogService log)
             throw new GitException(result);
     }
 
+    public async Task<IReadOnlyList<CommitInfo>> GetLogAsync(string repoPath, string revision, int maxCount)
+    {
+        var result = await RunAsync(repoPath,
+            ["log", $"--max-count={maxCount}", "--format=%H%x00%h%x00%an%x00%aI%x00%P%x00%s", revision, "--"], CancellationToken.None)
+            .ConfigureAwait(false);
+        if (!result.Success)
+            throw new GitException(result);
+
+        var commits = new List<CommitInfo>();
+        foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var f = line.Split('\0');
+            if (f.Length < 6)
+                continue;
+            commits.Add(new CommitInfo(f[0], f[1], f[2], DateTimeOffset.Parse(f[3]), f[5],
+                f[4].Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+        }
+        return commits;
+    }
+
+    /// <summary>The full message of the HEAD commit (used to pre-fill an amend).</summary>
+    public async Task<string?> GetHeadMessageAsync(string repoPath)
+    {
+        var result = await RunAsync(repoPath, ["log", "-1", "--format=%B"], CancellationToken.None).ConfigureAwait(false);
+        return result.Success ? result.StdOut.TrimEnd() : null;
+    }
+
+    public async Task<IReadOnlyList<StashInfo>> GetStashesAsync(string repoPath)
+    {
+        var result = await RunAsync(repoPath, ["stash", "list", "--format=%gd%x00%cI%x00%gs"], CancellationToken.None)
+            .ConfigureAwait(false);
+        if (!result.Success)
+            throw new GitException(result);
+
+        var stashes = new List<StashInfo>();
+        foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var f = line.Split('\0');
+            if (f.Length >= 3)
+                stashes.Add(new StashInfo(f[0], f[2], DateTimeOffset.Parse(f[1])));
+        }
+        return stashes;
+    }
+
     // ---- Actions -------------------------------------------------------------------------------
+
+    /// <summary>Stages paths (including deletions). Paths are sent in batches to stay under the command-line limit.</summary>
+    public Task<GitResult> StageAsync(string repoPath, IReadOnlyList<string> paths) =>
+        RunBatchedAsync(repoPath, ["add", "-A", "--"], paths);
+
+    public Task<GitResult> StageAllAsync(string repoPath) => RunAsync(repoPath, "add", "-A");
+
+    public Task<GitResult> UnstageAsync(string repoPath, IReadOnlyList<string> paths, bool hasHead) =>
+        hasHead
+            ? RunBatchedAsync(repoPath, ["restore", "--staged", "--"], paths)
+            : RunBatchedAsync(repoPath, ["rm", "--cached", "-r", "-q", "--"], paths);
+
+    public Task<GitResult> UnstageAllAsync(string repoPath, bool hasHead) =>
+        hasHead ? RunAsync(repoPath, "reset", "-q") : RunAsync(repoPath, "rm", "--cached", "-r", "-q", ".");
+
+    private async Task<GitResult> RunBatchedAsync(string repoPath, string[] command, IReadOnlyList<string> paths)
+    {
+        GitResult result = new(0, "", "");
+        foreach (var batch in paths.Chunk(100))
+        {
+            result = await RunAsync(repoPath, [.. command, .. batch], CancellationToken.None).ConfigureAwait(false);
+            if (!result.Success)
+                break;
+        }
+        return result;
+    }
+
+    public Task<GitResult> CommitAsync(string repoPath, string message, bool amend)
+    {
+        var args = new List<string> { "commit", "-m", message };
+        if (amend)
+            args.Add("--amend");
+        return RunAsync(repoPath, args, CancellationToken.None);
+    }
+
+    public Task<GitResult> StashPushAsync(string repoPath, string? message, bool includeUntracked)
+    {
+        var args = new List<string> { "stash", "push" };
+        if (includeUntracked)
+            args.Add("--include-untracked");
+        if (!string.IsNullOrWhiteSpace(message))
+            args.AddRange(["-m", message]);
+        return RunAsync(repoPath, args, CancellationToken.None);
+    }
+
+    public Task<GitResult> StashApplyAsync(string repoPath, string stashRef) => RunAsync(repoPath, "stash", "apply", stashRef);
+
+    public Task<GitResult> StashPopAsync(string repoPath, string stashRef) => RunAsync(repoPath, "stash", "pop", stashRef);
+
+    public Task<GitResult> StashDropAsync(string repoPath, string stashRef) => RunAsync(repoPath, "stash", "drop", stashRef);
 
     public Task<GitResult> FetchAsync(string repoPath) => RunAsync(repoPath, "fetch", "--all", "--prune");
 

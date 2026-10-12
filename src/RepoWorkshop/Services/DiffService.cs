@@ -42,37 +42,37 @@ public sealed class DiffService(GitService git, WinMergeService winMerge)
 
     private static string ToLocal(string repoRelativePath) => repoRelativePath.Replace('/', Path.DirectorySeparatorChar);
 
-    /// <summary>Compares the HEAD version of a changed file with the (editable) working copy.</summary>
-    public async Task DiffWorkingChangeAsync(string repoPath, FileChange change, bool hasHead)
+    /// <summary>Compares two versions of a single file. Only a working-tree file on the right is editable.</summary>
+    public async Task DiffFileAsync(string repoPath, DiffSide left, DiffSide right)
     {
         var temp = NewTempFolder();
-        var fileName = Path.GetFileName(ToLocal(change.Path));
+        var (leftPath, _) = await MaterializeAsync(repoPath, left, Path.Combine(temp, "left"));
+        var (rightPath, rightEditable) = await MaterializeAsync(repoPath, right, Path.Combine(temp, "right"));
+        winMerge.CompareFiles(leftPath, rightPath, left.Title, right.Title, leftReadOnly: true, rightReadOnly: !rightEditable);
+    }
 
-        string left;
-        if (!hasHead || change.Kind is ChangeKind.Untracked or ChangeKind.Added)
-        {
-            left = Path.Combine(temp, "empty", fileName);
-            Directory.CreateDirectory(Path.GetDirectoryName(left)!);
-            await File.WriteAllBytesAsync(left, []);
-        }
-        else
-        {
-            left = Path.Combine(temp, "HEAD", fileName);
-            await git.ExtractFileAsync(repoPath, "HEAD", change.OriginalPath ?? change.Path, left);
-        }
+    /// <summary>Returns a file on disk holding the side's content, and whether it is the live working-tree file.</summary>
+    private async Task<(string Path, bool IsWorkingFile)> MaterializeAsync(string repoPath, DiffSide side, string tempDir)
+    {
+        var fileName = side.Path is null ? "empty" : Path.GetFileName(ToLocal(side.Path));
+        var tempFile = Path.Combine(tempDir, fileName);
 
-        var right = Path.Combine(repoPath, ToLocal(change.Path));
-        var rightReadOnly = false;
-        if (!File.Exists(right))
+        if (side.Path is not null && side.Revision is null)
         {
-            right = Path.Combine(temp, "deleted", fileName);
-            Directory.CreateDirectory(Path.GetDirectoryName(right)!);
-            await File.WriteAllBytesAsync(right, []);
-            rightReadOnly = true;
+            var working = Path.Combine(repoPath, ToLocal(side.Path));
+            if (File.Exists(working))
+                return (working, true);
+        }
+        else if (side.Path is not null)
+        {
+            await git.ExtractFileAsync(repoPath, side.Revision!, side.Path, tempFile);
+            return (tempFile, false);
         }
 
-        winMerge.CompareFiles(left, right, $"HEAD: {change.OriginalPath ?? change.Path}", $"Working tree: {change.Path}",
-            leftReadOnly: true, rightReadOnly);
+        // Empty side: a file that does not exist on this side of the comparison.
+        Directory.CreateDirectory(tempDir);
+        await File.WriteAllBytesAsync(tempFile, []);
+        return (tempFile, false);
     }
 
     /// <summary>
@@ -118,4 +118,19 @@ public sealed class DiffService(GitService git, WinMergeService winMerge)
         winMerge.CompareFolders(leftDir, rightDir, leftTitle, rightTitle);
         return changes.Count;
     }
+}
+
+/// <summary>
+/// One side of a file comparison: a file at a revision, in the index, in the working tree, or nothing.
+/// </summary>
+public sealed record DiffSide(string Title, string? Revision, string? Path)
+{
+    public static DiffSide Empty(string title) => new(title, null, null);
+
+    public static DiffSide Working(string path) => new($"Working tree: {path}", null, path);
+
+    /// <summary>The staged version (git's ":path" syntax uses an empty revision for the index).</summary>
+    public static DiffSide Index(string path) => new($"Staged: {path}", "", path);
+
+    public static DiffSide At(string revision, string label, string path) => new($"{label}: {path}", revision, path);
 }

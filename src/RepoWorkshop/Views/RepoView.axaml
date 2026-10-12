@@ -48,7 +48,7 @@
             <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" />
         </Border>
 
-        <TabControl Padding="0,8,0,0">
+        <TabControl Padding="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}">
             <TabControl.Styles>
                 <Style Selector="TabItem">
                     <Setter Property="FontSize" Value="16" />
@@ -87,29 +87,15 @@
             </TabItem>
 
             <TabItem Header="{Binding ChangeCount, StringFormat='Changes ({0})'}">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
-                        <Button Content="Diff in WinMerge" Command="{Binding DiffChangeCommand}"
-                                ToolTip.Tip="Compare HEAD with the working copy (double-click a file)" />
-                        <Button Content="Show in Explorer" Command="{Binding OpenChangedFileCommand}" />
-                    </StackPanel>
-                    <Panel>
-                        <ListBox x:Name="ChangesList" ItemsSource="{Binding Changes}" SelectedItem="{Binding SelectedChange}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="m:FileChange">
-                                    <DockPanel>
-                                        <TextBlock DockPanel.Dock="Left" Classes="mono branch" Text="{Binding Code}" Width="36" />
-                                        <TextBlock DockPanel.Dock="Right" Classes="secondary small" Text="{Binding Kind}"
-                                                   VerticalAlignment="Center" Margin="12,0,0,0" />
-                                        <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock Classes="secondary" Text="Working tree is clean." IsVisible="{Binding !IsDirty}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Panel>
-                </DockPanel>
+                <ContentControl Content="{Binding Changes}" />
+            </TabItem>
+
+            <TabItem Header="History">
+                <ContentControl Content="{Binding History}" />
+            </TabItem>
+
+            <TabItem Header="{Binding Stashes.Items.Count, StringFormat='Stashes ({0})'}">
+                <ContentControl Content="{Binding Stashes}" />
             </TabItem>
         </TabControl>
     </DockPanel>

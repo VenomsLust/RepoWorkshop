@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             xmlns:views="using:RepoWorkshop.Views"
+             x:Class="RepoWorkshop.Views.ChangesView"
+             x:DataType="vm:ChangesViewModel">
+
+    <Grid RowDefinitions="*,Auto" ColumnDefinitions="*,12,*">
+        <!-- Unstaged -->
+        <DockPanel Grid.Column="0">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+                    <Button Content="Stage" Command="{Binding StageCommand}"
+                            CommandParameter="{Binding #UnstagedList.SelectedItems}"
+                            ToolTip.Tip="Stage the selected files (Ctrl/Shift-click to select several)" />
+                    <Button Content="Stage all" Command="{Binding StageAllCommand}" IsEnabled="{Binding HasUnstaged}" />
+                </StackPanel>
+                <TextBlock Classes="section" Text="{Binding Unstaged.Count, StringFormat='UNSTAGED ({0})'}" VerticalAlignment="Center" />
+            </DockPanel>
+            <Panel>
+                <ListBox x:Name="UnstagedList" ItemsSource="{Binding Unstaged}" SelectionMode="Multiple"
+                         ItemTemplate="{StaticResource FileChangeTemplate}"
+                         views:ItemDoubleClick.Command="{Binding DiffUnstagedCommand}">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Diff in WinMerge" Command="{Binding DiffUnstagedCommand}"
+                                      CommandParameter="{Binding #UnstagedList.SelectedItem}" />
+                            <MenuItem Header="Stage" Command="{Binding StageCommand}"
+                                      CommandParameter="{Binding #UnstagedList.SelectedItems}" />
+                            <MenuItem Header="Show in Explorer" Command="{Binding ShowInExplorerCommand}"
+                                      CommandParameter="{Binding #UnstagedList.SelectedItem}" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                </ListBox>
+                <TextBlock Classes="secondary" Text="No unstaged changes." IsVisible="{Binding !HasUnstaged}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Panel>
+        </DockPanel>
+
+        <!-- Staged -->
+        <DockPanel Grid.Column="2">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+                    <Button Content="Unstage" Command="{Binding UnstageCommand}"
+                            CommandParameter="{Binding #StagedList.SelectedItems}" />
+                    <Button Content="Unstage all" Command="{Binding UnstageAllCommand}" IsEnabled="{Binding HasStaged}" />
+                </StackPanel>
+                <TextBlock Classes="section" Text="{Binding Staged.Count, StringFormat='STAGED ({0})'}" VerticalAlignment="Center" />
+            </DockPanel>
+            <Panel>
+                <ListBox x:Name="StagedList" ItemsSource="{Binding Staged}" SelectionMode="Multiple"
+                         ItemTemplate="{StaticResource FileChangeTemplate}"
+                         views:ItemDoubleClick.Command="{Binding DiffStagedCommand}">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Diff in WinMerge" Command="{Binding DiffStagedCommand}"
+                                      CommandParameter="{Binding #StagedList.SelectedItem}" />
+                            <MenuItem Header="Unstage" Command="{Binding UnstageCommand}"
+                                      CommandParameter="{Binding #StagedList.SelectedItems}" />
+                            <MenuItem Header="Show in Explorer" Command="{Binding ShowInExplorerCommand}"
+                                      CommandParameter="{Binding #StagedList.SelectedItem}" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                </ListBox>
+                <TextBlock Classes="secondary" Text="Nothing staged yet." IsVisible="{Binding !HasStaged}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Panel>
+        </DockPanel>
+
+        <!-- Commit -->
+        <DockPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Spacing="8" Margin="10,0,0,0" VerticalAlignment="Bottom">
+                <CheckBox Content="Amend last commit" IsChecked="{Binding Amend}" />
+                <Button Content="Commit" Classes="accent" Command="{Binding CommitCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="16,6" />
+            </StackPanel>
+            <TextBox Text="{Binding CommitMessage}" PlaceholderText="Commit message"
+                     AcceptsReturn="True" TextWrapping="Wrap" Height="76" />
+        </DockPanel>
+    </Grid>
+</UserControl>

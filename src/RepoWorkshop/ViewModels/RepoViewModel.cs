@@ -11,7 +11,7 @@ using RepoWorkshop.Models;
 
 namespace RepoWorkshop.ViewModels;
 
-/// <summary>One repository within a project: its status, branches and working-tree changes.</summary>
+/// <summary>One repository within a project: its status, branches, changes, history and stashes.</summary>
 public partial class RepoViewModel : ViewModelBase
 {
     private readonly AppServices _services;
@@ -21,7 +21,15 @@ public partial class RepoViewModel : ViewModelBase
     {
         Model = model;
         _services = services;
+        Changes = new ChangesViewModel(this, services);
+        History = new HistoryViewModel(this, services);
+        Stashes = new StashesViewModel(this, services);
     }
+
+    public const int BranchesTab = 0;
+    public const int ChangesTab = 1;
+    public const int HistoryTab = 2;
+    public const int StashesTab = 3;
 
     public RepoModel Model { get; }
 
@@ -35,7 +43,15 @@ public partial class RepoViewModel : ViewModelBase
 
     public ObservableCollection<BranchInfo> RemoteBranches { get; } = [];
 
-    public ObservableCollection<FileChange> Changes { get; } = [];
+    public ChangesViewModel Changes { get; }
+
+    public HistoryViewModel History { get; }
+
+    public StashesViewModel Stashes { get; }
+
+    /// <summary>The selected tab: Branches, Changes, History or Stashes.</summary>
+    [ObservableProperty]
+    public partial int SelectedTabIndex { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SyncText))]
@@ -46,6 +62,7 @@ public partial class RepoViewModel : ViewModelBase
     public partial string? CurrentBranch { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHead))]
     public partial string? HeadCommit { get; set; }
 
     [ObservableProperty]
@@ -90,14 +107,13 @@ public partial class RepoViewModel : ViewModelBase
         nameof(CompareWithCurrentCommand))]
     public partial int BranchTabIndex { get; set; }
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(DiffChangeCommand), nameof(OpenChangedFileCommand))]
-    public partial FileChange? SelectedChange { get; set; }
-
     /// <summary>The branch selected on whichever branch tab is showing.</summary>
     public BranchInfo? ActiveBranch => BranchTabIndex == 0 ? SelectedLocalBranch : SelectedRemoteBranch;
 
     public bool HasError => Error is not null;
+
+    /// <summary>False in a new repository with no commits yet.</summary>
+    public bool HasHead => HeadCommit is not null;
 
     public bool IsDirty => ChangeCount > 0;
 
@@ -123,6 +139,20 @@ public partial class RepoViewModel : ViewModelBase
 
     public void NotifyNameChanged() => OnPropertyChanged(nameof(Name));
 
+    partial void OnSelectedTabIndexChanged(int value) => LoadHistoryIfVisible();
+
+    partial void OnSelectedLocalBranchChanged(BranchInfo? value) => LoadHistoryIfVisible();
+
+    partial void OnSelectedRemoteBranchChanged(BranchInfo? value) => LoadHistoryIfVisible();
+
+    partial void OnBranchTabIndexChanged(int value) => LoadHistoryIfVisible();
+
+    private void LoadHistoryIfVisible()
+    {
+        if (SelectedTabIndex == HistoryTab)
+            _ = History.ShowAsync(ActiveBranch?.Name ?? "HEAD", ActiveBranch?.Name ?? HeadText);
+    }
+
     /// <summary>Refreshes status and branches. Concurrent callers share the same refresh.</summary>
     public Task RefreshAsync()
     {
@@ -139,8 +169,10 @@ public partial class RepoViewModel : ViewModelBase
         {
             var statusTask = _services.Git.GetStatusAsync(Path);
             var branchesTask = _services.Git.GetBranchesAsync(Path);
+            var stashesTask = _services.Git.GetStashesAsync(Path);
             var status = await statusTask;
             var branches = await branchesTask;
+            var stashes = await stashesTask;
 
             CurrentBranch = status.Branch;
             HeadCommit = status.HeadCommit;
@@ -150,12 +182,12 @@ public partial class RepoViewModel : ViewModelBase
             Upstream = status.Upstream;
             Ahead = status.Ahead;
             Behind = status.Behind;
-            ChangeCount = status.Changes.Count;
+            ChangeCount = status.ChangedPathCount;
             Error = null;
 
-            var selectedChange = SelectedChange?.Path;
-            Replace(Changes, status.Changes.OrderBy(c => c.Path, StringComparer.OrdinalIgnoreCase));
-            SelectedChange = Changes.FirstOrDefault(c => c.Path == selectedChange);
+            Changes.Update(status);
+            Stashes.Update(stashes);
+            History.MarkStale();
 
             var selectedLocal = SelectedLocalBranch?.Name;
             var selectedRemote = SelectedRemoteBranch?.Name;
@@ -163,6 +195,7 @@ public partial class RepoViewModel : ViewModelBase
             Replace(RemoteBranches, branches.Where(b => b.IsRemote));
             SelectedLocalBranch = LocalBranches.FirstOrDefault(b => b.Name == selectedLocal);
             SelectedRemoteBranch = RemoteBranches.FirstOrDefault(b => b.Name == selectedRemote);
+            LoadHistoryIfVisible();
         }
         catch (Exception ex)
         {
@@ -172,12 +205,13 @@ public partial class RepoViewModel : ViewModelBase
             Upstream = null;
             ChangeCount = 0;
             Changes.Clear();
+            Stashes.Clear();
             LocalBranches.Clear();
             RemoteBranches.Clear();
         }
     }
 
-    private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
+    internal static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
     {
         target.Clear();
         foreach (var item in items)
@@ -185,7 +219,7 @@ public partial class RepoViewModel : ViewModelBase
     }
 
     /// <summary>Runs a git action, optionally reporting failure in a dialog, then refreshes.</summary>
-    private async Task<bool> RunActionAsync(string title, Func<Task<GitResult>> action, bool interactive)
+    internal async Task<bool> RunActionAsync(string title, Func<Task<GitResult>> action, bool interactive)
     {
         if (IsBusy)
             return false;
@@ -349,29 +383,6 @@ public partial class RepoViewModel : ViewModelBase
         {
             IsBusy = false;
         }
-    }
-
-    private bool HasSelectedChange => SelectedChange is not null;
-
-    [RelayCommand(CanExecute = nameof(HasSelectedChange))]
-    private async Task DiffChangeAsync()
-    {
-        try
-        {
-            await _services.Diff.DiffWorkingChangeAsync(Path, SelectedChange!, hasHead: HeadCommit is not null);
-        }
-        catch (Exception ex)
-        {
-            await _services.Dialogs.ShowMessageAsync("Diff", ex.Message);
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelectedChange))]
-    private void OpenChangedFile()
-    {
-        var file = System.IO.Path.Combine(Path, SelectedChange!.Path.Replace('/', System.IO.Path.DirectorySeparatorChar));
-        if (File.Exists(file))
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = false })?.Dispose();
     }
 
     [RelayCommand]

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace RepoWorkshop.Models;
 
@@ -76,4 +78,29 @@ public sealed record RepoStatus(
     string? Upstream,
     int Ahead,
     int Behind,
-    System.Collections.Generic.IReadOnlyList<FileChange> Changes);
+    IReadOnlyList<FileChange> Staged,
+    IReadOnlyList<FileChange> Unstaged)
+{
+    /// <summary>Number of distinct paths with staged or unstaged changes.</summary>
+    public int ChangedPathCount => Staged.Select(c => c.Path).Union(Unstaged.Select(c => c.Path)).Count();
+}
+
+public sealed record CommitInfo(
+    string Hash,
+    string ShortHash,
+    string Author,
+    DateTimeOffset Date,
+    string Subject,
+    IReadOnlyList<string> Parents)
+{
+    public string DateText => Date.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+
+    public string? FirstParent => Parents.Count > 0 ? Parents[0] : null;
+
+    public bool IsMerge => Parents.Count > 1;
+}
+
+public sealed record StashInfo(string Ref, string Message, DateTimeOffset Date)
+{
+    public string DateText => Date.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+}

@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             xmlns:m="using:RepoWorkshop.Models"
+             xmlns:views="using:RepoWorkshop.Views"
+             x:Class="RepoWorkshop.Views.StashesView"
+             x:DataType="vm:StashesViewModel">
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
+            <Button Content="Stash changes…" Command="{Binding StashChangesCommand}"
+                    ToolTip.Tip="Save all changes (including untracked files) and clean the working tree" />
+            <Separator />
+            <Button Content="Apply" Command="{Binding ApplyCommand}" ToolTip.Tip="Apply the stash and keep it" />
+            <Button Content="Pop" Command="{Binding PopCommand}" ToolTip.Tip="Apply the stash and remove it" />
+            <Button Content="Drop" Command="{Binding DropCommand}" />
+            <Separator />
+            <Button Content="Compare (WinMerge)" Command="{Binding CompareCommand}" />
+        </StackPanel>
+        <Panel>
+            <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedStash}"
+                     views:ItemDoubleClick.Command="{Binding CompareCommand}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="m:StashInfo">
+                        <Grid ColumnDefinitions="90,*,120" Margin="0,1">
+                            <TextBlock Grid.Column="0" Classes="mono small branch" Text="{Binding Ref}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Message}" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="2" Classes="secondary mono small" Text="{Binding DateText}" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Classes="secondary" Text="No stashes." IsVisible="{Binding !HasStashes}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Panel>
+    </DockPanel>
+</UserControl>

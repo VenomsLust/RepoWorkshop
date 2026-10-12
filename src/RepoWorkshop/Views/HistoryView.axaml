@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             xmlns:m="using:RepoWorkshop.Models"
+             xmlns:views="using:RepoWorkshop.Views"
+             x:Class="RepoWorkshop.Views.HistoryView"
+             x:DataType="vm:HistoryViewModel">
+
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <StackPanel DockPanel.Dock="Right" Classes="toolbar">
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Width="60" MinWidth="0" VerticalAlignment="Center" />
+                <Button Content="Compare commit (WinMerge)" Command="{Binding CompareCommitCommand}"
+                        ToolTip.Tip="Everything the selected commit changed (double-click a commit)" />
+                <Button Content="Reload" Command="{Binding ReloadCommand}" />
+            </StackPanel>
+            <TextBlock Classes="section" Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="Select a branch on the Branches tab to see its history" />
+        </DockPanel>
+
+        <Grid ColumnDefinitions="3*,8,2*">
+            <ListBox Grid.Column="0" ItemsSource="{Binding Commits}" SelectedItem="{Binding SelectedCommit}"
+                     views:ItemDoubleClick.Command="{Binding CompareCommitCommand}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="m:CommitInfo">
+                        <Grid ColumnDefinitions="70,*,140,120" Margin="0,1">
+                            <TextBlock Grid.Column="0" Classes="mono small branch" Text="{Binding ShortHash}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Subject}" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding Author}" TextTrimming="CharacterEllipsis"
+                                       Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="3" Classes="secondary mono small" Text="{Binding DateText}" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns" />
+
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Classes="section" Text="{Binding Files.Count, StringFormat='FILES IN COMMIT ({0})'}"
+                           Margin="0,0,0,6" ToolTip.Tip="Double-click a file to compare it before and after the commit" />
+                <ListBox ItemsSource="{Binding Files}" ItemTemplate="{StaticResource FileChangeTemplate}"
+                         views:ItemDoubleClick.Command="{Binding DiffFileCommand}" />
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>
