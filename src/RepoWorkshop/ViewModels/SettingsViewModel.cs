@@ -16,6 +16,7 @@ public partial class SettingsViewModel : ViewModelBase
         WinMergePath = settings.WinMergePath ?? "";
         CompareFromMergeBase = settings.CompareFromMergeBase;
         Theme = settings.Theme;
+        ApiEnabled = settings.ApiEnabled;
         DetectedWinMergePath = WinMergeService.Detect() ?? "(not found)";
     }
 
@@ -32,6 +33,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string Theme { get; set; }
 
+    [ObservableProperty]
+    public partial bool ApiEnabled { get; set; }
+
     [RelayCommand]
     private async Task BrowseWinMergeAsync()
     {
@@ -45,5 +49,6 @@ public partial class SettingsViewModel : ViewModelBase
         settings.WinMergePath = string.IsNullOrWhiteSpace(WinMergePath) ? null : WinMergePath.Trim();
         settings.CompareFromMergeBase = CompareFromMergeBase;
         settings.Theme = Theme;
+        settings.ApiEnabled = ApiEnabled;
     }
 }

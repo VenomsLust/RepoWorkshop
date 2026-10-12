@@ -25,4 +25,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="RepoWorkshop.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RepoWorkshop.Api\RepoWorkshop.Api.csproj" />
+  </ItemGroup>
 </Project>

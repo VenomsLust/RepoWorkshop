@@ -14,6 +14,9 @@ public sealed class AppSettings
     /// <summary>"Dark", "Light" or "System".</summary>
     public string Theme { get; set; } = "Dark";
 
+    /// <summary>Whether the named-pipe API (used by the rw command and LLM agents) is running.</summary>
+    public bool ApiEnabled { get; set; } = true;
+
     public Guid? LastProjectId { get; set; }
 
     public List<ProjectModel> Projects { get; set; } = [];

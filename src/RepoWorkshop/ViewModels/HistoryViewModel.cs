@@ -108,18 +108,23 @@ public partial class HistoryViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(HasSelectedCommit))]
     private async Task CompareCommitAsync()
     {
-        var commit = SelectedCommit!;
-        var parent = commit.FirstParent ?? GitService.EmptyTree;
-        var parentLabel = commit.FirstParent is null ? "(empty)" : commit.FirstParent[..7];
         try
         {
-            await _services.Diff.CompareRevisionsAsync(_repo.Path, parent, $"Before {commit.ShortHash} ({parentLabel})",
-                commit.Hash, $"{commit.ShortHash}: {commit.Subject}");
+            await OpenCommitComparisonAsync(SelectedCommit!);
         }
         catch (Exception ex)
         {
             await _services.Dialogs.ShowMessageAsync("Compare commit", ex.Message);
         }
+    }
+
+    /// <summary>Opens every file a commit changed, vs its first parent, in WinMerge. Returns the file count.</summary>
+    public Task<int> OpenCommitComparisonAsync(CommitInfo commit)
+    {
+        var parent = commit.FirstParent ?? GitService.EmptyTree;
+        var parentLabel = commit.FirstParent is null ? "(empty)" : commit.FirstParent[..7];
+        return _services.Diff.CompareRevisionsAsync(_repo.Path, parent, $"Before {commit.ShortHash} ({parentLabel})",
+            commit.Hash, $"{commit.ShortHash}: {commit.Subject}");
     }
 
     /// <summary>Compares one file as it was before and after the selected commit.</summary>

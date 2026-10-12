@@ -45,4 +45,12 @@ public sealed class DialogService(Func<Window> owner) : IDialogService
 
     public Task<bool> ShowSettingsAsync(SettingsViewModel settings) =>
         new SettingsWindow { DataContext = settings }.ShowDialog<bool>(owner());
+
+    public void BringToFront()
+    {
+        var window = owner();
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
+        window.Activate();
+    }
 }

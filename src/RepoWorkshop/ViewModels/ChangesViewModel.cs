@@ -107,26 +107,25 @@ public partial class ChangesViewModel : ViewModelBase
 
     // ---- Diffs --------------------------------------------------------------------------------
 
-    /// <summary>Staged change: the last commit vs the staged version.</summary>
     [RelayCommand]
-    private Task DiffStaged(FileChange? change)
+    private Task DiffStaged(FileChange? change) => change is null ? Task.CompletedTask : ReportErrorsAsync(OpenStagedDiffAsync(change));
+
+    [RelayCommand]
+    private Task DiffUnstaged(FileChange? change) => change is null ? Task.CompletedTask : ReportErrorsAsync(OpenUnstagedDiffAsync(change));
+
+    /// <summary>Staged change: the last commit vs the staged version.</summary>
+    public Task OpenStagedDiffAsync(FileChange change)
     {
-        if (change is null)
-            return Task.CompletedTask;
-        var basePath = change.OriginalPath ?? change.Path;
         var left = change.Kind is ChangeKind.Added || !_repo.HasHead
             ? DiffSide.Empty("(new file)")
-            : DiffSide.At("HEAD", "HEAD", basePath);
+            : DiffSide.At("HEAD", "HEAD", change.OriginalPath ?? change.Path);
         var right = change.Kind is ChangeKind.Deleted ? DiffSide.Empty("(deleted)") : DiffSide.Index(change.Path);
-        return DiffAsync(left, right);
+        return _services.Diff.DiffFileAsync(_repo.Path, left, right);
     }
 
     /// <summary>Unstaged change: the staged version vs the (editable) working copy.</summary>
-    [RelayCommand]
-    private Task DiffUnstaged(FileChange? change)
+    public Task OpenUnstagedDiffAsync(FileChange change)
     {
-        if (change is null)
-            return Task.CompletedTask;
         var left = change.Kind switch
         {
             ChangeKind.Untracked => DiffSide.Empty("(untracked)"),
@@ -135,14 +134,14 @@ public partial class ChangesViewModel : ViewModelBase
             _ => DiffSide.Index(change.Path),
         };
         var right = change.Kind is ChangeKind.Deleted ? DiffSide.Empty("(deleted)") : DiffSide.Working(change.Path);
-        return DiffAsync(left, right);
+        return _services.Diff.DiffFileAsync(_repo.Path, left, right);
     }
 
-    private async Task DiffAsync(DiffSide left, DiffSide right)
+    private async Task ReportErrorsAsync(Task diff)
     {
         try
         {
-            await _services.Diff.DiffFileAsync(_repo.Path, left, right);
+            await diff;
         }
         catch (Exception ex)
         {

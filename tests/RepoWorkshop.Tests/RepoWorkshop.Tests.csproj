@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RepoWorkshop\RepoWorkshop.csproj" />
+    <ProjectReference Include="..\..\src\RepoWorkshop.Api\RepoWorkshop.Api.csproj" />
+    <ProjectReference Include="..\..\src\RepoWorkshop.Cli\RepoWorkshop.Cli.csproj" />
   </ItemGroup>
 
 </Project>

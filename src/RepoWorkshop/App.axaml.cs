@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using RepoWorkshop.Automation;
 using RepoWorkshop.Services;
 using RepoWorkshop.ViewModels;
 using RepoWorkshop.Views;
@@ -33,8 +34,14 @@ public partial class App : Application
             var dialogs = new DialogService(() => window);
             var services = new AppServices(store, settings, git, winMerge, diff, log, dialogs);
 
-            window.DataContext = new MainViewModel(services);
+            var main = new MainViewModel(services);
+            window.DataContext = main;
             desktop.MainWindow = window;
+
+            var api = new ApiHost(main, services);
+            _ = api.ApplySettingsAsync();
+            main.SettingsApplied += () => _ = api.ApplySettingsAsync();
+            desktop.Exit += (_, _) => api.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
         base.OnFrameworkInitializationCompleted();

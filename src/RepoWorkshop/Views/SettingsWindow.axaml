@@ -33,6 +33,14 @@
                       Content="Compare from the merge base (show only what the other branch changed)" />
         </StackPanel>
 
+        <StackPanel Spacing="6">
+            <TextBlock Classes="subtitle" Text="Automation" />
+            <CheckBox IsChecked="{Binding ApiEnabled}"
+                      Content="Enable the local API (rw command and LLM agents)" />
+            <TextBlock Classes="secondary small" TextWrapping="Wrap"
+                       Text="Only programs running as your Windows user can connect. Destructive actions always ask you first." />
+        </StackPanel>
+
         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
             <Button Content="Save" Classes="accent" IsDefault="True" MinWidth="80" Click="OnSave" />
             <Button Content="Cancel" IsCancel="True" MinWidth="80" Click="OnCancel" />

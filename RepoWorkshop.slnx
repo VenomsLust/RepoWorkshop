@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/RepoWorkshop.Api/RepoWorkshop.Api.csproj" />
+    <Project Path="src/RepoWorkshop.Cli/RepoWorkshop.Cli.csproj" />
     <Project Path="src/RepoWorkshop/RepoWorkshop.csproj" />
   </Folder>
   <Folder Name="/tests/">

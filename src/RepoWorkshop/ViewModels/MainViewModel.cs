@@ -50,6 +50,13 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsLogVisible { get; set; }
 
+    /// <summary>Shown in the status bar, e.g. "API: on".</summary>
+    [ObservableProperty]
+    public partial string ApiStatus { get; set; } = "";
+
+    /// <summary>Raised after settings are saved, so the app can start or stop the API server.</summary>
+    public event System.Action? SettingsApplied;
+
     partial void OnSelectedProjectChanged(ProjectViewModel? value)
     {
         _services.Settings.LastProjectId = value?.Model.Id;
@@ -64,13 +71,18 @@ public partial class MainViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(name))
             return;
 
-        var model = new ProjectModel { Name = name.Trim() };
+        SelectedProject = CreateProject(name.Trim());
+    }
+
+    public ProjectViewModel CreateProject(string name)
+    {
+        var model = new ProjectModel { Name = name };
         _services.Settings.Projects.Add(model);
         _services.SaveSettings();
 
         var project = new ProjectViewModel(model, _services);
         Projects.Add(project);
-        SelectedProject = project;
+        return project;
     }
 
     private bool HasSelectedProject => SelectedProject is not null;
@@ -92,14 +104,19 @@ public partial class MainViewModel : ViewModelBase
         var project = SelectedProject!;
         var confirmed = await _services.Dialogs.ConfirmAsync("Remove project",
             $"Remove the project \"{project.Name}\"?\n\nThe repositories on disk are not affected.", "Remove");
-        if (!confirmed)
-            return;
+        if (confirmed)
+            RemoveProject(project);
+    }
 
+    /// <summary>Removes a project from the app (its repositories on disk are not touched).</summary>
+    public void RemoveProject(ProjectViewModel project)
+    {
         var index = Projects.IndexOf(project);
         Projects.Remove(project);
         _services.Settings.Projects.Remove(project.Model);
         _services.SaveSettings();
-        SelectedProject = Projects.Count == 0 ? null : Projects[System.Math.Min(index, Projects.Count - 1)];
+        if (SelectedProject is null || SelectedProject == project)
+            SelectedProject = Projects.Count == 0 ? null : Projects[System.Math.Min(index, Projects.Count - 1)];
     }
 
     [RelayCommand]
@@ -112,6 +129,7 @@ public partial class MainViewModel : ViewModelBase
             App.ApplyTheme(_services.Settings.Theme);
             _services.SaveSettings();
             UpdateWinMergeStatus();
+            SettingsApplied?.Invoke();
         }
     }
 

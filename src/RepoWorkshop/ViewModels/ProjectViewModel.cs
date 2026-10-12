@@ -59,15 +59,21 @@ public partial class ProjectViewModel : ViewModelBase
         if (folder is null)
             return;
 
-        var topLevel = await _services.Git.GetTopLevelAsync(folder);
+        var (_, error) = await AddRepoByPathAsync(folder);
+        if (error is not null)
+            await _services.Dialogs.ShowMessageAsync("Add repository", error);
+    }
+
+    /// <summary>Adds the repository containing <paramref name="path"/>. Returns the repo, or an error message.</summary>
+    public async Task<(RepoViewModel? Repo, string? Error)> AddRepoByPathAsync(string path)
+    {
+        var topLevel = await _services.Git.GetTopLevelAsync(path);
         if (topLevel is null)
-        {
-            await _services.Dialogs.ShowMessageAsync("Add repository", $"{folder}\n\nis not inside a git repository.");
-            return;
-        }
+            return (null, $"{path}\n\nis not inside a git repository.");
         if (!TryAddRepo(topLevel))
-            await _services.Dialogs.ShowMessageAsync("Add repository", $"{topLevel}\n\nis already in this project.");
+            return (null, $"{topLevel}\n\nis already in this project.");
         _services.SaveSettings();
+        return (Repos.Last(), null);
     }
 
     /// <summary>Adds every git repository found directly in (or one level below) a chosen folder.</summary>
@@ -134,14 +140,19 @@ public partial class ProjectViewModel : ViewModelBase
         var repo = SelectedRepo!;
         var confirmed = await _services.Dialogs.ConfirmAsync("Remove repository",
             $"Remove \"{repo.Name}\" from the project \"{Name}\"?\n\n{repo.Path}\n\nThe repository on disk is not affected.", "Remove");
-        if (!confirmed)
-            return;
+        if (confirmed)
+            RemoveRepo(repo);
+    }
 
+    /// <summary>Removes a repository from this project (the repository on disk is not touched).</summary>
+    public void RemoveRepo(RepoViewModel repo)
+    {
         var index = Repos.IndexOf(repo);
         Repos.Remove(repo);
         Model.Repos.Remove(repo.Model);
         _services.SaveSettings();
-        SelectedRepo = Repos.Count == 0 ? null : Repos[Math.Min(index, Repos.Count - 1)];
+        if (SelectedRepo is null || SelectedRepo == repo)
+            SelectedRepo = Repos.Count == 0 ? null : Repos[Math.Min(index, Repos.Count - 1)];
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedRepo))]
@@ -158,34 +169,39 @@ public partial class ProjectViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private Task RefreshAll() => Task.WhenAll(Repos.Select(r => r.RefreshAsync()));
+    private Task RefreshAll() => RefreshAllAsync();
+
+    public Task RefreshAllAsync() => Task.WhenAll(Repos.Select(r => r.RefreshAsync()));
 
     [RelayCommand]
-    private Task FetchAll() => RunBulkAsync("Fetch", r => r.FetchAsync(interactive: false));
+    private Task FetchAll() => FetchAllAsync();
 
     [RelayCommand]
-    private Task PullAll() => RunBulkAsync("Pull", r => r.PullAsync(interactive: false));
+    private Task PullAll() => PullAllAsync();
 
-    /// <summary>Switches every repository that has the given branch (locally or on a remote) to it.</summary>
+    public Task<IReadOnlyList<RepoOpResult>> FetchAllAsync() => RunBulkAsync("Fetch", Repos.ToList(), r => r.FetchAsync());
+
+    public Task<IReadOnlyList<RepoOpResult>> PullAllAsync() => RunBulkAsync("Pull", Repos.ToList(), r => r.PullAsync());
+
     [RelayCommand]
     private async Task SwitchAllAsync()
     {
         var name = await _services.Dialogs.PromptAsync("Switch all repositories",
             "Branch to switch to in every repository that has it:", SelectedRepo?.CurrentBranch ?? "");
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-        name = name.Trim();
-
-        await RefreshAll();
-        var (withBranch, without) = Partition(Repos, r => r.HasBranch(name));
-        foreach (var repo in without)
-            _services.Log.Info($"[{repo.Name}] has no branch \"{name}\"; skipped.");
-
-        await RunBulkAsync($"Switch to {name}", r => r.CurrentBranch == name ? Task.FromResult(true) : r.SwitchToAsync(name, interactive: false),
-            withBranch, skipped: without.Count);
+        if (!string.IsNullOrWhiteSpace(name))
+            await SwitchAllAsync(name.Trim());
     }
 
-    /// <summary>Creates a branch from the current HEAD in every repository and switches to it.</summary>
+    /// <summary>Switches every repository that has the given branch (locally or on a remote) to it.</summary>
+    public async Task<IReadOnlyList<RepoOpResult>> SwitchAllAsync(string name)
+    {
+        await RefreshAllAsync();
+        var (withBranch, without) = Partition(Repos, r => r.HasBranch(name));
+        return await RunBulkAsync($"Switch to {name}", withBranch,
+            r => r.CurrentBranch == name ? Task.FromResult(new GitResult(0, "Already on this branch.", "")) : r.SwitchToAsync(name),
+            without.Select(r => new RepoOpResult(r.Name, RepoOpOutcome.Skipped, $"No branch \"{name}\".")));
+    }
+
     [RelayCommand]
     private async Task CreateBranchAllAsync()
     {
@@ -200,14 +216,16 @@ public partial class ProjectViewModel : ViewModelBase
             await _services.Dialogs.ShowMessageAsync("Create branch", $"\"{name}\" is not a valid branch name.");
             return;
         }
+        await CreateBranchAllAsync(name);
+    }
 
-        await RefreshAll();
+    /// <summary>Creates a branch from the current HEAD in every repository that lacks it, and switches to it.</summary>
+    public async Task<IReadOnlyList<RepoOpResult>> CreateBranchAllAsync(string name)
+    {
+        await RefreshAllAsync();
         var (available, existing) = Partition(Repos, r => !r.LocalBranches.Any(b => b.Name == name));
-        foreach (var repo in existing)
-            _services.Log.Info($"[{repo.Name}] already has a branch \"{name}\"; skipped.");
-
-        await RunBulkAsync($"Create {name}", r => r.CreateBranchAsync(name, null, checkout: true, interactive: false),
-            available, skipped: existing.Count);
+        return await RunBulkAsync($"Create {name}", available, r => r.CreateBranchAsync(name, null, checkout: true),
+            existing.Select(r => new RepoOpResult(r.Name, RepoOpOutcome.Skipped, $"Branch \"{name}\" already exists.")));
     }
 
     private static (List<T> Matching, List<T> Others) Partition<T>(IEnumerable<T> items, Func<T, bool> predicate)
@@ -219,24 +237,39 @@ public partial class ProjectViewModel : ViewModelBase
         return (matching, rest);
     }
 
-    private async Task RunBulkAsync(string title, Func<RepoViewModel, Task<bool>> action,
-        IReadOnlyList<RepoViewModel>? repos = null, int skipped = 0)
+    /// <summary>Runs an action on several repositories in parallel and logs a one-line summary.</summary>
+    private async Task<IReadOnlyList<RepoOpResult>> RunBulkAsync(string title, IReadOnlyList<RepoViewModel> repos,
+        Func<RepoViewModel, Task<GitResult>> action, IEnumerable<RepoOpResult>? skipped = null)
     {
-        repos ??= Repos.ToList();
-        var results = await Task.WhenAll(repos.Select(action));
-        var failed = repos.Where((_, i) => !results[i]).Select(r => r.Name).ToList();
+        var gitResults = await Task.WhenAll(repos.Select(action));
+        var results = repos
+            .Select((r, i) => new RepoOpResult(r.Name, gitResults[i].Success ? RepoOpOutcome.Succeeded : RepoOpOutcome.Failed,
+                gitResults[i].Message))
+            .Concat(skipped ?? [])
+            .ToList();
 
-        var summary = $"{title}: {results.Length - failed.Count} succeeded";
-        if (skipped > 0)
-            summary += $", {skipped} skipped";
+        foreach (var skip in results.Where(r => r.Outcome == RepoOpOutcome.Skipped))
+            _services.Log.Info($"[{skip.Repo}] {skip.Message} Skipped.");
+
+        var failed = results.Where(r => r.Outcome == RepoOpOutcome.Failed).Select(r => r.Repo).ToList();
+        var skippedCount = results.Count(r => r.Outcome == RepoOpOutcome.Skipped);
+        var summary = $"{title}: {results.Count(r => r.Outcome == RepoOpOutcome.Succeeded)} succeeded";
+        if (skippedCount > 0)
+            summary += $", {skippedCount} skipped";
         if (failed.Count > 0)
-        {
-            summary += $", {failed.Count} failed ({string.Join(", ", failed)})";
-            _services.Log.Error(summary + ". See the log for details.");
-        }
+            _services.Log.Error(summary + $", {failed.Count} failed ({string.Join(", ", failed)}). See the log for details.");
         else
-        {
             _services.Log.Info(summary + ".");
-        }
+        return results;
     }
 }
+
+public enum RepoOpOutcome
+{
+    Succeeded,
+    Failed,
+    Skipped,
+}
+
+/// <summary>The outcome of a project-wide action for one repository.</summary>
+public sealed record RepoOpResult(string Repo, RepoOpOutcome Outcome, string? Message);

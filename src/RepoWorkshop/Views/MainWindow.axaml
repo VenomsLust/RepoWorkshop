@@ -29,6 +29,7 @@
                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right" Classes="small secondary" Text="{Binding WinMergeStatus}" Margin="16,0,0,0" />
+                <TextBlock DockPanel.Dock="Right" Classes="small secondary" Text="{Binding ApiStatus}" Margin="16,0,0,0" />
                 <TextBlock Classes="small" Classes.error="{Binding StatusIsError}" Text="{Binding StatusText}"
                            TextTrimming="CharacterEllipsis" />
             </DockPanel>

@@ -218,25 +218,23 @@ public partial class RepoViewModel : ViewModelBase
             target.Add(item);
     }
 
-    /// <summary>Runs a git action, optionally reporting failure in a dialog, then refreshes.</summary>
-    internal async Task<bool> RunActionAsync(string title, Func<Task<GitResult>> action, bool interactive)
+    /// <summary>
+    /// Runs a git action with the busy indicator showing, then refreshes. Never shows dialogs;
+    /// failures (including exceptions) come back as an unsuccessful result.
+    /// </summary>
+    public async Task<GitResult> ExecuteAsync(Func<Task<GitResult>> action)
     {
         if (IsBusy)
-            return false;
+            return new GitResult(-1, "", $"{Name} is busy with another operation; try again shortly.");
         IsBusy = true;
         try
         {
-            var result = await action();
-            if (!result.Success && interactive)
-                await _services.Dialogs.ShowMessageAsync($"{title} failed — {Name}", result.Message);
-            return result.Success;
+            return await action();
         }
         catch (Exception ex)
         {
             _services.Log.Error($"[{Name}] {ex.Message}");
-            if (interactive)
-                await _services.Dialogs.ShowMessageAsync($"{title} failed — {Name}", ex.Message);
-            return false;
+            return new GitResult(-1, "", ex.Message);
         }
         finally
         {
@@ -245,19 +243,46 @@ public partial class RepoViewModel : ViewModelBase
         }
     }
 
-    // ---- Operations also used for project-wide (bulk) actions ---------------------------------
+    /// <summary>Like <see cref="ExecuteAsync"/>, but reports a failure in a dialog when <paramref name="interactive"/>.</summary>
+    internal async Task<bool> RunActionAsync(string title, Func<Task<GitResult>> action, bool interactive)
+    {
+        var result = await ExecuteAsync(action);
+        if (!result.Success && interactive)
+            await _services.Dialogs.ShowMessageAsync($"{title} failed — {Name}", result.Message);
+        return result.Success;
+    }
 
-    public Task<bool> FetchAsync(bool interactive) =>
-        RunActionAsync("Fetch", () => _services.Git.FetchAsync(Path), interactive);
+    // ---- Operations shared by the UI, project-wide actions and the API ------------------------
 
-    public Task<bool> PullAsync(bool interactive) =>
-        RunActionAsync("Pull", () => _services.Git.PullAsync(Path), interactive);
+    public Task<GitResult> FetchAsync() => ExecuteAsync(() => _services.Git.FetchAsync(Path));
 
-    public Task<bool> SwitchToAsync(string branchName, bool interactive) =>
-        RunActionAsync("Switch branch", () => _services.Git.SwitchAsync(Path, branchName), interactive);
+    public Task<GitResult> PullAsync() => ExecuteAsync(() => _services.Git.PullAsync(Path));
 
-    public Task<bool> CreateBranchAsync(string name, string? startPoint, bool checkout, bool interactive) =>
-        RunActionAsync("Create branch", () => _services.Git.CreateBranchAsync(Path, name, startPoint, checkout), interactive);
+    public Task<GitResult> SwitchToAsync(string branchName) => ExecuteAsync(() => _services.Git.SwitchAsync(Path, branchName));
+
+    public Task<GitResult> CreateBranchAsync(string name, string? startPoint, bool checkout) =>
+        ExecuteAsync(() => _services.Git.CreateBranchAsync(Path, name, startPoint, checkout));
+
+    /// <summary>
+    /// Opens WinMerge with HEAD (or its merge base with the branch) on the left and the branch on the right.
+    /// Returns the number of differing files; WinMerge is not opened when there are none.
+    /// </summary>
+    public async Task<int> CompareWithBranchAsync(string branch, bool fromMergeBase)
+    {
+        var left = "HEAD";
+        var leftTitle = $"{HeadText} (current)";
+        if (fromMergeBase && await _services.Git.GetMergeBaseAsync(Path, "HEAD", branch) is { } mergeBase)
+        {
+            left = mergeBase;
+            leftTitle = $"merge base of {HeadText} and {branch} ({mergeBase[..7]})";
+        }
+
+        var count = await _services.Diff.CompareRevisionsAsync(Path, left, leftTitle, branch, branch);
+        _services.Log.Info(count == 0
+            ? $"[{Name}] No differences between {leftTitle} and {branch}."
+            : $"[{Name}] Comparing {count} file(s): {leftTitle} ↔ {branch}");
+        return count;
+    }
 
     /// <summary>Whether a local branch, or a remote branch of the same short name, exists (as of the last refresh).</summary>
     public bool HasBranch(string name) =>
@@ -269,10 +294,10 @@ public partial class RepoViewModel : ViewModelBase
     private Task Refresh() => RefreshAsync();
 
     [RelayCommand]
-    private Task Fetch() => FetchAsync(interactive: true);
+    private Task Fetch() => RunActionAsync("Fetch", () => _services.Git.FetchAsync(Path), interactive: true);
 
     [RelayCommand]
-    private Task Pull() => PullAsync(interactive: true);
+    private Task Pull() => RunActionAsync("Pull", () => _services.Git.PullAsync(Path), interactive: true);
 
     [RelayCommand]
     private async Task PushAsync()
@@ -310,7 +335,7 @@ public partial class RepoViewModel : ViewModelBase
             await _services.Dialogs.ShowMessageAsync("New branch", $"\"{name}\" is not a valid branch name.");
             return;
         }
-        await CreateBranchAsync(name, startPoint, checkout: true, interactive: true);
+        await RunActionAsync("Create branch", () => _services.Git.CreateBranchAsync(Path, name, startPoint, checkout: true), interactive: true);
     }
 
     private bool CanDeleteBranch => BranchTabIndex == 0 && SelectedLocalBranch is { IsHead: false };
@@ -357,23 +382,7 @@ public partial class RepoViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            var left = "HEAD";
-            var leftTitle = $"{HeadText} (current)";
-            if (_services.Settings.CompareFromMergeBase)
-            {
-                var mergeBase = await _services.Git.GetMergeBaseAsync(Path, "HEAD", branch.Name);
-                if (mergeBase is not null)
-                {
-                    left = mergeBase;
-                    leftTitle = $"merge base of {HeadText} and {branch.Name} ({mergeBase[..7]})";
-                }
-            }
-
-            var count = await _services.Diff.CompareRevisionsAsync(Path, left, leftTitle, branch.Name, branch.Name);
-            if (count == 0)
-                _services.Log.Info($"[{Name}] No differences between {leftTitle} and {branch.Name}.");
-            else
-                _services.Log.Info($"[{Name}] Comparing {count} file(s): {leftTitle} ↔ {branch.Name}");
+            await CompareWithBranchAsync(branch.Name, _services.Settings.CompareFromMergeBase);
         }
         catch (Exception ex)
         {

@@ -15,7 +15,7 @@ dotnet run --project src/RepoWorkshop
 dotnet test
 ```
 
-To install a Release build to `%LOCALAPPDATA%\Programs\RepoWorkshop` with Start Menu and Desktop shortcuts (re-run to update; close the app first):
+To install a Release build (app + `rw`) to `%LOCALAPPDATA%\Programs\RepoWorkshop` with Start Menu and Desktop shortcuts, and the agent skill (re-run to update; close the app first):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File publish.ps1
@@ -39,13 +39,34 @@ Settings and projects are stored in `%APPDATA%\RepoWorkshop\settings.json`. Set 
   - *Compare with current* opens a folder comparison of every file that differs between the current branch (or the merge base) and the selected branch.
 - Output log of every git command that changes state.
 
+## LLM / automation API
+
+While the app is running it serves a local API over a named pipe (`RepoWorkshop.<username>`, current Windows user only; JSON-RPC 2.0, one message per line). The `rw` command-line client wraps it:
+
+```bash
+rw help                      # list methods; "rw help repo.commit" for parameters
+rw project.status --project "AutoArmorUpgrade"
+rw repo.status               # repo defaults to the one containing the current directory
+rw ui.compareBranch --branch feature/x   # opens WinMerge for the user
+```
+
+- `rw` prints JSON results (errors as JSON on stderr, exit code 1) and starts the app if it isn't running.
+- Destructive requests (delete branch, drop stash, remove project/repo, amend a pushed commit) show a confirmation dialog in the app. Declining returns error code -32001.
+- The API can be turned off in **Settings → Automation**.
+- [skills/repo-workshop/SKILL.md](skills/repo-workshop/SKILL.md) teaches an AI agent how to use it; `publish.ps1` installs it to `~/.claude/skills`. Pass `-AddToPath` to put `rw` on your PATH.
+- `REPOWORKSHOP_PIPE` and `REPOWORKSHOP_SETTINGS` point a dev instance at a separate pipe and settings file.
+
 ## Layout
 
 ```
+src/RepoWorkshop.Api/   Named-pipe protocol, server and client (shared by the app and rw)
+src/RepoWorkshop.Cli/   rw.exe command-line client
 src/RepoWorkshop/
+  Automation/   API method handlers (run on the UI thread against the view models)
   Models/       Plain data: settings, projects, repo refs, git results
   Services/     GitService (git CLI), WinMergeService, DiffService, SettingsStore, LogService
   ViewModels/   MainViewModel → ProjectViewModel → RepoViewModel → Changes/History/Stashes (CommunityToolkit.Mvvm)
   Views/        Avalonia windows / user controls, dialogs
-tests/RepoWorkshop.Tests/   xUnit tests (status parsing + git integration against a temp repo)
+tests/RepoWorkshop.Tests/   xUnit tests (git parsing/integration, pipe protocol, rw argument parsing)
+skills/repo-workshop/       SKILL.md for AI agents
 ```

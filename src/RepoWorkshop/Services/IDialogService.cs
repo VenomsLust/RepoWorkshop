@@ -17,4 +17,7 @@ public interface IDialogService
     Task<string?> PickFileAsync(string title, string filterName, params string[] patterns);
 
     Task<bool> ShowSettingsAsync(SettingsViewModel settings);
+
+    /// <summary>Restores and activates the main window (e.g. before asking to confirm an API request).</summary>
+    void BringToFront();
 }
