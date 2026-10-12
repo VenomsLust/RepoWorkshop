@@ -118,6 +118,23 @@ public sealed class GitServiceIntegrationTests : IAsyncLifetime {
         Assert.Equal("Multi\n\nline message", await _git.GetHeadMessageAsync(_repo));
     }
 
+    /// <summary>Restoring to HEAD discards both staged and unstaged changes, and brings back a deleted file.</summary>
+    [Fact]
+    public async Task RestoresFilesToHead() {
+        await File.WriteAllTextAsync(Path.Combine(_repo, "a.txt"), "staged edit\n");
+        await _git.StageAsync(_repo, ["a.txt"]);
+        await File.WriteAllTextAsync(Path.Combine(_repo, "a.txt"), "more edits\n");
+        File.Delete(Path.Combine(_repo, "c.txt"));
+
+        Assert.True((await _git.RestoreToHeadAsync(_repo, ["a.txt", "c.txt"])).Success);
+
+        RepoStatus status = await _git.GetStatusAsync(_repo);
+        Assert.Empty(status.Staged);
+        Assert.Empty(status.Unstaged);
+        Assert.Equal("one\ntwo", (await File.ReadAllTextAsync(Path.Combine(_repo, "a.txt"))).Trim().ReplaceLineEndings("\n"));
+        Assert.True(File.Exists(Path.Combine(_repo, "c.txt")));
+    }
+
     /// <summary>Log order and parents; a root commit's files come from the empty tree.</summary>
     [Fact]
     public async Task ReadsLogWithParents() {

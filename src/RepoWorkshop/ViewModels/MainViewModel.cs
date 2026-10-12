@@ -77,6 +77,7 @@ public partial class MainViewModel : ViewModelBase {
     public void RemoveProject(ProjectViewModel project) {
         int index = Projects.IndexOf(project);
         Projects.Remove(project);
+        project.DisposeRepos();
         _services.Settings.Projects.Remove(project.Model);
         _services.SaveSettings();
         if (SelectedProject is null || SelectedProject == project) {

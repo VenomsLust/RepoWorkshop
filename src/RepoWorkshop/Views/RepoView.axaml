@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:RepoWorkshop.ViewModels"
              xmlns:m="using:RepoWorkshop.Models"
+             xmlns:views="using:RepoWorkshop.Views"
              x:Class="RepoWorkshop.Views.RepoView"
              x:DataType="vm:RepoViewModel">
 
@@ -48,7 +49,9 @@
             <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" />
         </Border>
 
-        <TabControl Padding="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}">
+        <!-- Tabs on the left, the always-visible changes panel on the right -->
+        <Grid ColumnDefinitions="*,12,340">
+        <TabControl Grid.Column="0" Padding="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}">
             <TabControl.Styles>
                 <Style Selector="TabItem">
                     <Setter Property="FontSize" Value="16" />
@@ -98,5 +101,10 @@
                 <ContentControl Content="{Binding Stashes}" />
             </TabItem>
         </TabControl>
+
+        <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns" />
+
+        <views:WorkingFilesPanel Grid.Column="2" DataContext="{Binding Changes}" />
+        </Grid>
     </DockPanel>
 </UserControl>

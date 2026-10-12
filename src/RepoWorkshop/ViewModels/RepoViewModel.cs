@@ -6,13 +6,15 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using RepoWorkshop.Models;
+using RepoWorkshop.Services;
 
 namespace RepoWorkshop.ViewModels;
 
 /// <summary>One repository within a project: its status, branches, changes, history and stashes.</summary>
-public partial class RepoViewModel : ViewModelBase {
+public partial class RepoViewModel : ViewModelBase, IDisposable {
     /// <summary>Index of the Branches tab.</summary>
     public const int BranchesTab = 0;
 
@@ -31,13 +33,20 @@ public partial class RepoViewModel : ViewModelBase {
     /// <summary>The refresh in progress (or the last one), shared by concurrent callers.</summary>
     private Task? _refreshTask;
 
-    /// <summary>Creates the repository and its tab view models; call <see cref="RefreshAsync"/> to load it.</summary>
+    /// <summary>Set when a refresh is requested while one is running, so it runs once more afterwards.</summary>
+    private bool _refreshAgain;
+
+    /// <summary>Refreshes when files change on disk; null if the folder couldn't be watched.</summary>
+    private RepoWatcher? _watcher;
+
+    /// <summary>Creates the repository and its tab view models, and starts watching its folder; call <see cref="RefreshAsync"/> to load it.</summary>
     public RepoViewModel(RepoModel model, AppServices services) {
         Model = model;
         _services = services;
         Changes = new ChangesViewModel(this, services);
         History = new HistoryViewModel(this, services);
         Stashes = new StashesViewModel(this, services);
+        StartWatching();
     }
 
     /// <summary>The saved repository reference.</summary>
@@ -185,12 +194,16 @@ public partial class RepoViewModel : ViewModelBase {
     /// <summary>Raises a change notification for <see cref="Name"/> after the alias changes.</summary>
     public void NotifyNameChanged() => OnPropertyChanged(nameof(Name));
 
-    /// <summary>Refreshes status, branches and stashes. Concurrent callers share the same refresh.</summary>
+    /// <summary>
+    /// Refreshes status, branches and stashes. A call during a refresh joins it, and makes it
+    /// run once more at the end so changes made meanwhile are not missed.
+    /// </summary>
     public Task RefreshAsync() {
         if (_refreshTask is { IsCompleted: false }) {
+            _refreshAgain = true;
             return _refreshTask;
         }
-        return _refreshTask = RefreshCoreAsync();
+        return _refreshTask = RefreshLoopAsync();
     }
 
     /// <summary>Loads the repository if it has never been loaded.</summary>
@@ -262,11 +275,60 @@ public partial class RepoViewModel : ViewModelBase {
         return result.Success;
     }
 
+    /// <summary>Stops watching the folder.</summary>
+    public void Dispose() {
+        _watcher?.Dispose();
+        _watcher = null;
+    }
+
+    /// <summary>
+    /// Makes <paramref name="target"/> equal to <paramref name="items"/> (same order) with the fewest
+    /// changes, so unchanged items keep their identity and list selections survive a refresh.
+    /// </summary>
+    internal static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<T> items) {
+        HashSet<T> wanted = [.. items];
+        for (int i = target.Count - 1; i >= 0; i--) {
+            if (!wanted.Contains(target[i])) {
+                target.RemoveAt(i);
+            }
+        }
+        for (int i = 0; i < items.Count; i++) {
+            if (i < target.Count && EqualityComparer<T>.Default.Equals(target[i], items[i])) {
+                continue;
+            }
+            int existing = target.IndexOf(items[i]);
+            if (existing > i) {
+                target.Move(existing, i);
+            } else {
+                target.Insert(i, items[i]);
+            }
+        }
+    }
+
     /// <summary>Replaces a collection's contents.</summary>
     internal static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items) {
         target.Clear();
         foreach (T item in items) {
             target.Add(item);
+        }
+    }
+
+    /// <summary>Refreshes until no further refresh was requested while one was running.</summary>
+    private async Task RefreshLoopAsync() {
+        do {
+            _refreshAgain = false;
+            await RefreshCoreAsync();
+        } while (_refreshAgain);
+    }
+
+    /// <summary>Starts the file watcher, if the folder exists.</summary>
+    private void StartWatching() {
+        try {
+            _watcher = new RepoWatcher(Path);
+            _watcher.Changed += OnFilesChanged;
+        } catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) {
+            // Missing or inaccessible folder: the repository shows an error on refresh instead.
+            _watcher = null;
         }
     }
 
@@ -423,6 +485,9 @@ public partial class RepoViewModel : ViewModelBase {
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{Path}\"") { UseShellExecute = false })?.Dispose();
         }
     }
+
+    /// <summary>Refreshes (on the UI thread) after files change on disk.</summary>
+    private void OnFilesChanged() => Dispatcher.UIThread.Post(() => _ = RefreshAsync());
 
     /// <summary>Loads history when the History tab is opened.</summary>
     partial void OnSelectedTabIndexChanged(int value) => LoadHistoryIfVisible();

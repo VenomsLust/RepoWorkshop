@@ -14,20 +14,30 @@ using RepoWorkshop.Services;
 
 namespace RepoWorkshop.ViewModels;
 
-/// <summary>The working tree: staged and unstaged changes, and committing them.</summary>
+/// <summary>
+/// The working tree: staged and unstaged changes (the Changes tab), every changed file in one list
+/// (the always-visible changes panel), and committing.
+/// </summary>
 public partial class ChangesViewModel : ViewModelBase {
+    /// <summary>The most files Diff opens at once.</summary>
+    private const int MaxDiffs = 10;
+
+    /// <summary>The most file names listed in a confirmation.</summary>
+    private const int MaxListedFiles = 10;
+
     /// <summary>The repository these changes belong to.</summary>
     private readonly RepoViewModel _repo;
 
     /// <summary>Shared app services.</summary>
     private readonly AppServices _services;
 
-    /// <summary>Creates the tab for <paramref name="repo"/>; its lists are filled by <see cref="Update"/>.</summary>
+    /// <summary>Creates the view model for <paramref name="repo"/>; its lists are filled by <see cref="Update"/>.</summary>
     public ChangesViewModel(RepoViewModel repo, AppServices services) {
         _repo = repo;
         _services = services;
         Staged.CollectionChanged += OnStagedChanged;
         Unstaged.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUnstaged));
+        Files.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasFiles));
     }
 
     /// <summary>Changes in the index, sorted by path.</summary>
@@ -36,11 +46,17 @@ public partial class ChangesViewModel : ViewModelBase {
     /// <summary>Working-tree changes (including untracked and conflicted files), sorted by path.</summary>
     public ObservableCollection<FileChange> Unstaged { get; } = [];
 
+    /// <summary>Every changed file, staged or not, sorted by path (the changes panel).</summary>
+    public ObservableCollection<WorkingFile> Files { get; } = [];
+
     /// <summary>Whether anything is staged.</summary>
     public bool HasStaged => Staged.Count > 0;
 
     /// <summary>Whether anything is unstaged.</summary>
     public bool HasUnstaged => Unstaged.Count > 0;
+
+    /// <summary>Whether there are any changes at all.</summary>
+    public bool HasFiles => Files.Count > 0;
 
     /// <summary>The message for the next commit.</summary>
     [ObservableProperty]
@@ -55,16 +71,18 @@ public partial class ChangesViewModel : ViewModelBase {
     /// <summary>Whether there is a message and something to commit.</summary>
     private bool CanCommit => !string.IsNullOrWhiteSpace(CommitMessage) && (HasStaged || Amend);
 
-    /// <summary>Fills the lists from a fresh status.</summary>
+    /// <summary>Updates the lists from a fresh status, keeping unchanged items (and so the user's selection).</summary>
     public void Update(RepoStatus status) {
-        RepoViewModel.Replace(Staged, status.Staged.OrderBy(c => c.Path, StringComparer.OrdinalIgnoreCase));
-        RepoViewModel.Replace(Unstaged, status.Unstaged.OrderBy(c => c.Path, StringComparer.OrdinalIgnoreCase));
+        RepoViewModel.Sync(Staged, status.Staged.OrderBy(c => c.Path, StringComparer.OrdinalIgnoreCase).ToList());
+        RepoViewModel.Sync(Unstaged, status.Unstaged.OrderBy(c => c.Path, StringComparer.OrdinalIgnoreCase).ToList());
+        RepoViewModel.Sync(Files, BuildWorkingFiles(status));
     }
 
-    /// <summary>Empties both lists (e.g. when the repository can't be read).</summary>
+    /// <summary>Empties all lists (e.g. when the repository can't be read).</summary>
     public void Clear() {
         Staged.Clear();
         Unstaged.Clear();
+        Files.Clear();
     }
 
     /// <summary>Opens a staged change in WinMerge: the last commit vs the staged version.</summary>
@@ -87,6 +105,38 @@ public partial class ChangesViewModel : ViewModelBase {
         DiffSide right = change.Kind is ChangeKind.Deleted ? DiffSide.Empty("(deleted)") : DiffSide.Working(change.Path);
         return _services.Diff.DiffFileAsync(_repo.Path, left, right);
     }
+
+    /// <summary>Opens a file's whole change in WinMerge: the last commit vs the (editable) working copy.</summary>
+    public Task OpenWorkingDiffAsync(WorkingFile file) {
+        bool isNew = !_repo.HasHead || file.Kind is ChangeKind.Untracked or ChangeKind.Added;
+        DiffSide left = isNew ? DiffSide.Empty("(new file)") : DiffSide.At("HEAD", "HEAD", file.OriginalPath ?? file.Path);
+        DiffSide right = file.Kind is ChangeKind.Deleted ? DiffSide.Empty("(deleted)") : DiffSide.Working(file.Path);
+        return _services.Diff.DiffFileAsync(_repo.Path, left, right);
+    }
+
+    /// <summary>Merges the staged and unstaged halves of a status into one row per path, sorted by path.</summary>
+    internal static List<WorkingFile> BuildWorkingFiles(RepoStatus status) {
+        Dictionary<string, FileChange> staged = status.Staged.ToDictionary(c => c.Path);
+        Dictionary<string, FileChange> unstaged = status.Unstaged.ToDictionary(c => c.Path);
+
+        List<WorkingFile> files = [];
+        foreach (string path in staged.Keys.Union(unstaged.Keys).Order(StringComparer.OrdinalIgnoreCase)) {
+            FileChange? s = staged.GetValueOrDefault(path);
+            FileChange? u = unstaged.GetValueOrDefault(path);
+
+            // Staged additions, deletions and renames describe the file best; otherwise show the working-tree change.
+            ChangeKind kind = s?.Kind is ChangeKind.Added or ChangeKind.Deleted or ChangeKind.Renamed
+                ? s.Kind
+                : u?.Kind ?? s!.Kind;
+            string code = u?.Kind is ChangeKind.Untracked or ChangeKind.Unmerged
+                ? u.Code
+                : $"{s?.Code ?? " "}{u?.Code ?? " "}";
+            files.Add(new WorkingFile(path, s?.OriginalPath, kind, code, IsStaged: s is not null, HasUnstaged: u is not null));
+        }
+        return files;
+    }
+
+    // ---- Changes tab --------------------------------------------------------------------------
 
     /// <summary>Stages the selected files.</summary>
     [RelayCommand]
@@ -133,7 +183,7 @@ public partial class ChangesViewModel : ViewModelBase {
         if (change is null) {
             return;
         }
-        string file = Path.Combine(_repo.Path, change.Path.Replace('/', Path.DirectorySeparatorChar));
+        string file = FullPath(change.Path);
         if (File.Exists(file)) {
             Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = false })?.Dispose();
         }
@@ -159,6 +209,115 @@ public partial class ChangesViewModel : ViewModelBase {
         }
     }
 
+    // ---- Changes panel ------------------------------------------------------------------------
+
+    /// <summary>Stages the selected files.</summary>
+    [RelayCommand]
+    private async Task StageFilesAsync(IList? selected) {
+        List<string> paths = FilesOf(selected).Select(f => f.Path).ToList();
+        if (paths.Count > 0) {
+            await _repo.RunActionAsync("Stage", () => _services.Git.StageAsync(_repo.Path, paths), interactive: true);
+        }
+    }
+
+    /// <summary>Unstages the staged files among the selection, keeping their working-tree changes.</summary>
+    [RelayCommand(CanExecute = nameof(HasStaged))]
+    private async Task UnstageFilesAsync(IList? selected) {
+        List<string> paths = FilesOf(selected).Where(f => f.IsStaged).Select(f => f.Path).ToList();
+        bool hasHead = _repo.HasHead;
+        if (paths.Count > 0) {
+            await _repo.RunActionAsync("Unstage", () => _services.Git.UnstageAsync(_repo.Path, paths, hasHead), interactive: true);
+        }
+    }
+
+    /// <summary>
+    /// After confirming, puts the selected files back to the last commit. Newly added files are only
+    /// unstaged (kept on disk); untracked files are left alone (use Delete).
+    /// </summary>
+    [RelayCommand]
+    private async Task RevertFilesAsync(IList? selected) {
+        List<WorkingFile> files = FilesOf(selected);
+        List<WorkingFile> revertible = files.Where(f => f.Kind != ChangeKind.Untracked).ToList();
+        if (files.Count == 0) {
+            return;
+        }
+        if (revertible.Count == 0) {
+            await _services.Dialogs.ShowMessageAsync("Revert", "Untracked files have no committed version to revert to. Use Delete to remove them.");
+            return;
+        }
+
+        string note = revertible.Count < files.Count ? "\n\nUntracked files are left alone; use Delete for those." : "";
+        bool confirmed = await _services.Dialogs.ConfirmAsync("Revert",
+            $"Revert {Plural(revertible.Count, "file")} to the last commit?\n\n{ListFiles(revertible)}\n\n" +
+            $"{(revertible.Count == 1 ? "Its" : "Their")} uncommitted changes will be lost.{note}", "Revert");
+        if (!confirmed) {
+            return;
+        }
+
+        // A file that isn't in HEAD can only be unstaged; a rename restores the old path and unstages the new one.
+        bool hasHead = _repo.HasHead;
+        List<string> unstage = revertible
+            .Where(f => !hasHead || f.Kind is ChangeKind.Added or ChangeKind.Renamed)
+            .Where(f => f.IsStaged)
+            .Select(f => f.Path)
+            .ToList();
+        List<string> restore = hasHead
+            ? revertible
+                .Where(f => f.Kind != ChangeKind.Added)
+                .Select(f => f.Kind == ChangeKind.Renamed && f.OriginalPath is not null ? f.OriginalPath : f.Path)
+                .ToList()
+            : [];
+
+        await _repo.RunActionAsync("Revert", async () => {
+            if (unstage.Count > 0) {
+                GitResult unstaged = await _services.Git.UnstageAsync(_repo.Path, unstage, hasHead);
+                if (!unstaged.Success || restore.Count == 0) {
+                    return unstaged;
+                }
+            }
+            return await _services.Git.RestoreToHeadAsync(_repo.Path, restore);
+        }, interactive: true);
+    }
+
+    /// <summary>Opens each selected file's change in WinMerge (up to <see cref="MaxDiffs"/>).</summary>
+    [RelayCommand]
+    private async Task DiffFilesAsync(IList? selected) {
+        List<WorkingFile> files = FilesOf(selected);
+        if (files.Count > MaxDiffs) {
+            _services.Log.Info($"[{_repo.Name}] Opening the first {MaxDiffs} of {files.Count} selected files.");
+        }
+        foreach (WorkingFile file in files.Take(MaxDiffs)) {
+            await ReportErrorsAsync(OpenWorkingDiffAsync(file));
+        }
+    }
+
+    /// <summary>Opens one file's change in WinMerge (double-click in the panel).</summary>
+    [RelayCommand]
+    private Task DiffFile(WorkingFile? file) => file is null ? Task.CompletedTask : ReportErrorsAsync(OpenWorkingDiffAsync(file));
+
+    /// <summary>After confirming, moves the selected files to the Recycle Bin.</summary>
+    [RelayCommand]
+    private async Task DeleteFilesAsync(IList? selected) {
+        List<WorkingFile> files = FilesOf(selected).Where(f => File.Exists(FullPath(f.Path))).ToList();
+        if (files.Count == 0) {
+            return;
+        }
+
+        bool confirmed = await _services.Dialogs.ConfirmAsync("Delete",
+            $"Move {Plural(files.Count, "file")} to the Recycle Bin?\n\n{ListFiles(files)}", "Delete");
+        if (!confirmed) {
+            return;
+        }
+
+        List<string> paths = files.Select(f => FullPath(f.Path)).ToList();
+        await _repo.RunActionAsync("Delete", () => {
+            RecycleBin.Send(paths);
+            return Task.FromResult(new GitResult(0, $"Moved {Plural(paths.Count, "file")} to the Recycle Bin.", ""));
+        }, interactive: true);
+    }
+
+    // ---- Helpers ------------------------------------------------------------------------------
+
     /// <summary>Fills the message with the last commit's, unless the user has typed one meanwhile.</summary>
     private async Task PrefillAmendMessageAsync() {
         string? message = await _services.Git.GetHeadMessageAsync(_repo.Path);
@@ -176,13 +335,31 @@ public partial class ChangesViewModel : ViewModelBase {
         }
     }
 
-    /// <summary>The distinct paths of the selected list items.</summary>
+    /// <summary>The full local path of a repository-relative path.</summary>
+    private string FullPath(string repoRelativePath) =>
+        Path.Combine(_repo.Path, repoRelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+    /// <summary>The distinct paths of the selected Changes-tab items.</summary>
     private static List<string> PathsOf(IList? items) => items?.OfType<FileChange>().Select(c => c.Path).Distinct().ToList() ?? [];
+
+    /// <summary>The selected panel items, in list order.</summary>
+    private static List<WorkingFile> FilesOf(IList? items) =>
+        items?.OfType<WorkingFile>().OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+
+    /// <summary>Up to <see cref="MaxListedFiles"/> paths, one per line, for a confirmation.</summary>
+    private static string ListFiles(IReadOnlyList<WorkingFile> files) {
+        string list = string.Join('\n', files.Take(MaxListedFiles).Select(f => f.Path));
+        return files.Count > MaxListedFiles ? $"{list}\n…and {files.Count - MaxListedFiles} more" : list;
+    }
+
+    /// <summary>E.g. "1 file" or "3 files".</summary>
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     /// <summary>Updates what depends on whether anything is staged.</summary>
     private void OnStagedChanged(object? sender, NotifyCollectionChangedEventArgs e) {
         OnPropertyChanged(nameof(HasStaged));
         CommitCommand.NotifyCanExecuteChanged();
+        UnstageFilesCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Pre-fills the message with the last commit's when amending (if nothing has been typed).</summary>

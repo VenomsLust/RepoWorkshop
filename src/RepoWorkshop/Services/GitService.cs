@@ -253,6 +253,10 @@ public sealed class GitService {
     public Task<GitResult> UnstageAllAsync(string repoPath, bool hasHead) =>
         hasHead ? RunAsync(repoPath, "reset", "-q") : RunAsync(repoPath, "rm", "--cached", "-r", "-q", ".");
 
+    /// <summary>Puts tracked files back to their HEAD version, in both the index and the working tree.</summary>
+    public Task<GitResult> RestoreToHeadAsync(string repoPath, IReadOnlyList<string> paths) =>
+        RunBatchedAsync(repoPath, ["restore", "--source=HEAD", "--staged", "--worktree", "--"], paths);
+
     /// <summary>Commits the staged changes, or replaces the last commit when <paramref name="amend"/>.</summary>
     public Task<GitResult> CommitAsync(string repoPath, string message, bool amend) {
         List<string> args = ["commit", "-m", message];
@@ -438,6 +442,9 @@ public sealed class GitService {
         };
         // Never block waiting for a terminal credential prompt; GUI credential helpers still work.
         psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        // Don't let read-only commands like status rewrite .git/index: the file watcher would see
+        // that as a change and trigger another status, forever.
+        psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
         psi.ArgumentList.Add("-c");
         psi.ArgumentList.Add("core.quotepath=off");
         foreach (string arg in args) {

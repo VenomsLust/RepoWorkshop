@@ -26,7 +26,8 @@ Settings and projects are stored in `%APPDATA%\RepoWorkshop\settings.json`. Set 
 ## Features
 
 - **Projects** that each reference one or more repositories (add one at a time, or scan a folder).
-- Per-repository status: current branch, ahead/behind upstream, working-tree changes.
+- Per-repository status: current branch, ahead/behind upstream, working-tree changes. Updates live: each repository's folder is watched, so edits, new files and branch switches made outside the app show up within a second.
+- Changed-files panel beside the repository tabs: every changed file (repo-relative path; staged files in green italics), multi-select, double-click to diff, and a right-click menu with Stage, Unstage, Revert (back to the last commit), Diff and Delete (to the Recycle Bin).
 - Branches: checkout (local, or a remote branch as a new tracking branch), create, delete, merge into current.
 - Fetch / pull (fast-forward only) / push (sets upstream on first push).
 - Changes: staged and unstaged lists, stage/unstage (Ctrl/Shift-click for several), commit, amend.

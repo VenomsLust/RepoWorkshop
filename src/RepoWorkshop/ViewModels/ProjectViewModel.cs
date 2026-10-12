@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -27,7 +29,10 @@ public partial class ProjectViewModel : ViewModelBase {
         _services = services;
         Name = model.Name;
         Repos = new ObservableCollection<RepoViewModel>(model.Repos.Select(r => new RepoViewModel(r, services)));
-        Repos.CollectionChanged += (_, _) => OnPropertyChanged(nameof(SummaryText));
+        foreach (RepoViewModel repo in Repos) {
+            repo.PropertyChanged += OnRepoPropertyChanged;
+        }
+        Repos.CollectionChanged += OnReposChanged;
         SelectedRepo = Repos.FirstOrDefault();
     }
 
@@ -46,8 +51,17 @@ public partial class ProjectViewModel : ViewModelBase {
     [NotifyCanExecuteChangedFor(nameof(RemoveRepoCommand), nameof(RenameRepoCommand))]
     public partial RepoViewModel? SelectedRepo { get; set; }
 
-    /// <summary>E.g. "3 repositories".</summary>
-    public string SummaryText => Repos.Count == 1 ? "1 repository" : $"{Repos.Count} repositories";
+    /// <summary>E.g. "3 repositories · 1 with changes".</summary>
+    public string SummaryText {
+        get {
+            string repos = Repos.Count == 1 ? "1 repository" : $"{Repos.Count} repositories";
+            int dirty = Repos.Count(r => r.IsDirty);
+            return dirty == 0 ? repos : $"{repos} · {dirty} with changes";
+        }
+    }
+
+    /// <summary>Whether any repository has uncommitted changes.</summary>
+    public bool HasChanges => Repos.Any(r => r.IsDirty);
 
     /// <summary>Whether a repository is selected (enables rename/remove).</summary>
     private bool HasSelectedRepo => SelectedRepo is not null;
@@ -78,6 +92,7 @@ public partial class ProjectViewModel : ViewModelBase {
     public void RemoveRepo(RepoViewModel repo) {
         int index = Repos.IndexOf(repo);
         Repos.Remove(repo);
+        repo.Dispose();
         Model.Repos.Remove(repo.Model);
         _services.SaveSettings();
         if (SelectedRepo is null || SelectedRepo == repo) {
@@ -280,6 +295,37 @@ public partial class ProjectViewModel : ViewModelBase {
             (predicate(item) ? matching : others).Add(item);
         }
         return (matching, others);
+    }
+
+    /// <summary>Stops watching every repository's folder (when the project is removed).</summary>
+    public void DisposeRepos() {
+        foreach (RepoViewModel repo in Repos) {
+            repo.Dispose();
+        }
+    }
+
+    /// <summary>Tracks repositories added to or removed from the list, for the change summary.</summary>
+    private void OnReposChanged(object? sender, NotifyCollectionChangedEventArgs e) {
+        foreach (RepoViewModel repo in e.OldItems?.OfType<RepoViewModel>() ?? []) {
+            repo.PropertyChanged -= OnRepoPropertyChanged;
+        }
+        foreach (RepoViewModel repo in e.NewItems?.OfType<RepoViewModel>() ?? []) {
+            repo.PropertyChanged += OnRepoPropertyChanged;
+        }
+        NotifySummaryChanged();
+    }
+
+    /// <summary>Updates the summary when a repository becomes clean or dirty.</summary>
+    private void OnRepoPropertyChanged(object? sender, PropertyChangedEventArgs e) {
+        if (e.PropertyName == nameof(RepoViewModel.IsDirty)) {
+            NotifySummaryChanged();
+        }
+    }
+
+    /// <summary>Raises change notifications for the summary properties.</summary>
+    private void NotifySummaryChanged() {
+        OnPropertyChanged(nameof(SummaryText));
+        OnPropertyChanged(nameof(HasChanges));
     }
 
     /// <summary>Keeps the saved project's name in sync.</summary>

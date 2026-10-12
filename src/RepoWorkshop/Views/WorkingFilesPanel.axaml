@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             xmlns:m="using:RepoWorkshop.Models"
+             xmlns:views="using:RepoWorkshop.Views"
+             x:Class="RepoWorkshop.Views.WorkingFilesPanel"
+             x:DataType="vm:ChangesViewModel">
+
+    <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="4" Margin="0,8,0,0">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="10,8,10,6">
+                <TextBlock DockPanel.Dock="Right" Classes="small staged" Text="staged" Margin="8,0,0,0"
+                           VerticalAlignment="Center" ToolTip.Tip="Staged files are shown in green italics" />
+                <TextBlock Classes="section" Text="{Binding Files.Count, StringFormat='CHANGED FILES ({0})'}"
+                           VerticalAlignment="Center"
+                           ToolTip.Tip="Ctrl/Shift-click to select several; right-click for actions; double-click to diff" />
+            </DockPanel>
+
+            <Panel>
+                <ListBox x:Name="FilesList" ItemsSource="{Binding Files}" SelectionMode="Multiple" Background="Transparent"
+                         views:ItemDoubleClick.Command="{Binding DiffFileCommand}">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="10,3" />
+                            <Setter Property="MinHeight" Value="0" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Stage" Command="{Binding StageFilesCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
+                            <MenuItem Header="Unstage" Command="{Binding UnstageFilesCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
+                            <MenuItem Header="Revert…" Command="{Binding RevertFilesCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
+                            <MenuItem Header="Diff" Command="{Binding DiffFilesCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
+                            <Separator />
+                            <MenuItem Header="Delete…" Command="{Binding DeleteFilesCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="m:WorkingFile">
+                            <DockPanel ToolTip.Tip="{Binding StateText}">
+                                <TextBlock DockPanel.Dock="Left" Classes="mono small secondary" Text="{Binding Code}" Width="26"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding DisplayPath}" Classes.staged="{Binding IsStaged}"
+                                           TextTrimming="PrefixCharacterEllipsis" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Classes="secondary" Text="No changes." IsVisible="{Binding !HasFiles}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Panel>
+        </DockPanel>
+    </Border>
+</UserControl>

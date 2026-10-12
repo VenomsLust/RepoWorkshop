@@ -28,9 +28,11 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="AccentTextBrush" Color="#2E8BD8" />
+                    <SolidColorBrush x:Key="StagedBrush" Color="#2E7D32" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="AccentTextBrush" Color="#6CB8F5" />
+                    <SolidColorBrush x:Key="StagedBrush" Color="#6CCB7A" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
@@ -68,6 +70,10 @@
         </Style>
         <Style Selector="TextBlock.branch">
             <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+        </Style>
+        <Style Selector="TextBlock.staged">
+            <Setter Property="Foreground" Value="{DynamicResource StagedBrush}" />
+            <Setter Property="FontStyle" Value="Italic" />
         </Style>
         <Style Selector="TextBlock.head">
             <Setter Property="FontWeight" Value="Bold" />
