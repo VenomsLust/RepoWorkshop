@@ -19,6 +19,9 @@ public sealed record WorkingFile(
     /// <summary>The path, showing "old → new" for renames.</summary>
     public string DisplayPath => OriginalPath is null ? Path : $"{OriginalPath} → {Path}";
 
+    /// <summary>Whether the file has an unresolved merge conflict.</summary>
+    public bool IsConflict => Kind == ChangeKind.Unmerged;
+
     /// <summary>Whether part of the file is staged and part is not.</summary>
     public bool IsPartiallyStaged => IsStaged && HasUnstaged;
 

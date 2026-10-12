@@ -28,6 +28,7 @@ Settings and projects are stored in `%APPDATA%\RepoWorkshop\settings.json`. Set 
 - **Projects** that each reference one or more repositories (add one at a time, or scan a folder).
 - Per-repository status: current branch, ahead/behind upstream, working-tree changes. Updates live: each repository's folder is watched, so edits, new files and branch switches made outside the app show up within a second.
 - Changed-files panel beside the repository tabs: every changed file (repo-relative path; staged files in green italics), multi-select, double-click to diff, and a right-click menu with Stage, Unstage, Revert (back to the last commit), Diff and Delete (to the Recycle Bin).
+- Merge conflicts: conflicted files are shown in red with a banner; double-click (or "Resolve in WinMerge…") opens a three-way merge (ours | base | theirs) whose saved result is written back to the file. Stage it to mark it resolved.
 - Branches: checkout (local, or a remote branch as a new tracking branch), create, delete, merge into current.
 - Fetch / pull (fast-forward only) / push (sets upstream on first push).
 - Changes: staged and unstaged lists, stage/unstage (Ctrl/Shift-click for several), commit, amend.
@@ -52,7 +53,8 @@ rw ui.compareBranch --branch feature/x   # opens WinMerge for the user
 ```
 
 - `rw` prints JSON results (errors as JSON on stderr, exit code 1) and starts the app if it isn't running.
-- Destructive requests (delete branch, drop stash, remove project/repo, amend a pushed commit) show a confirmation dialog in the app. Declining returns error code -32001.
+- `repo.diff` returns diff text; `ui.resolveConflict` opens a conflict in WinMerge's three-way merge.
+- Destructive requests (revert files, delete branch, drop stash, remove project/repo, amend a pushed commit) show a confirmation dialog in the app. Declining returns error code -32001.
 - The API can be turned off in **Settings → Automation**.
 - [skills/repo-workshop/SKILL.md](skills/repo-workshop/SKILL.md) teaches an AI agent how to use it; `publish.ps1` installs it to `~/.claude/skills`. Pass `-AddToPath` to put `rw` on your PATH.
 - `REPOWORKSHOP_PIPE` and `REPOWORKSHOP_SETTINGS` point a dev instance at a separate pipe and settings file.

@@ -56,11 +56,23 @@ public sealed class WinMergeService {
         Launch(["/r", "/e", "/u", "/wl", "/wr", "/dl", leftTitle, "/dr", rightTitle, left, right]);
     }
 
+    /// <summary>
+    /// Opens a three-way merge: ours on the left, the common base in the (editable) middle and
+    /// theirs on the right. Saving writes the merged result to <paramref name="output"/>.
+    /// </summary>
+    public void MergeThreeWay(string ours, string baseFile, string theirs, string output, string oursTitle, string baseTitle, string theirsTitle) {
+        Launch(["/e", "/u", "/wl", "/wr", "/fm", "/dl", oursTitle, "/dm", baseTitle, "/dr", theirsTitle, ours, baseFile, theirs, "/o", output]);
+    }
+
     /// <summary>Starts WinMerge with the given arguments without waiting for it.</summary>
     private void Launch(IEnumerable<string> args) {
         string exe = ResolveExecutable()
                      ?? throw new InvalidOperationException("WinMerge was not found. Install it or set its location in Settings.");
         ProcessStartInfo psi = new(exe) { UseShellExecute = false };
+        // Saving an edited file would otherwise leave a .bak copy next to it in the repository.
+        // /cfg overrides the setting for this window only; the user's WinMerge preferences are untouched.
+        psi.ArgumentList.Add("/cfg");
+        psi.ArgumentList.Add("Backup/EnableFile=0");
         foreach (string arg in args) {
             psi.ArgumentList.Add(arg);
         }

@@ -24,7 +24,7 @@ public sealed class GitService {
 
     /// <summary>Read-only commands, not echoed to the log so it stays focused on actions.</summary>
     private static readonly HashSet<string> QuietCommands =
-        ["status", "for-each-ref", "rev-parse", "diff", "cat-file", "merge-base", "check-ref-format", "remote", "log"];
+        ["status", "for-each-ref", "rev-parse", "diff", "cat-file", "merge-base", "check-ref-format", "remote", "log", "show"];
 
     /// <summary>Receives the commands run and their output.</summary>
     private readonly LogService _log;
@@ -208,6 +208,38 @@ public sealed class GitService {
                 f[4].Split(' ', StringSplitOptions.RemoveEmptyEntries)));
         }
         return commits;
+    }
+
+    /// <summary>
+    /// Unified diff text. With <paramref name="commit"/>: that commit's patch. Otherwise from
+    /// <paramref name="from"/> (to <paramref name="to"/>, or the working tree), or with
+    /// <paramref name="staged"/> the index vs HEAD, or by default the working tree vs the index.
+    /// Untracked files are not included.
+    /// </summary>
+    public async Task<string> GetDiffTextAsync(string repoPath, string? from, string? to, bool staged, string? commit,
+        IReadOnlyList<string> paths, int contextLines) {
+        List<string> args = commit is not null
+            ? ["show", "--format=", "--patch", "--no-color", "--no-ext-diff", $"-U{contextLines}", commit]
+            : ["diff", "--no-color", "--no-ext-diff", $"-U{contextLines}"];
+        if (commit is null) {
+            if (staged) {
+                args.Add("--cached");
+            }
+            if (from is not null) {
+                args.Add(from);
+            }
+            if (to is not null) {
+                args.Add(to);
+            }
+        }
+        args.Add("--");
+        args.AddRange(paths);
+
+        GitResult result = await RunAsync(repoPath, args, CancellationToken.None).ConfigureAwait(false);
+        if (!result.Success) {
+            throw new GitException(result);
+        }
+        return result.StdOut;
     }
 
     /// <summary>The full message of the HEAD commit (used to pre-fill an amend).</summary>

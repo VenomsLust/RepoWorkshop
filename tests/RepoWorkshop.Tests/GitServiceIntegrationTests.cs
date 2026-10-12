@@ -135,6 +135,55 @@ public sealed class GitServiceIntegrationTests : IAsyncLifetime {
         Assert.True(File.Exists(Path.Combine(_repo, "c.txt")));
     }
 
+    /// <summary>Diff text for unstaged, staged, between-revisions and single-commit modes.</summary>
+    [Fact]
+    public async Task ProducesDiffTextInEachMode() {
+        await File.AppendAllTextAsync(Path.Combine(_repo, "a.txt"), "staged line\n");
+        await _git.StageAsync(_repo, ["a.txt"]);
+        await File.AppendAllTextAsync(Path.Combine(_repo, "a.txt"), "unstaged line\n");
+
+        string unstaged = await _git.GetDiffTextAsync(_repo, null, null, staged: false, null, [], 3);
+        Assert.Contains("+unstaged line", unstaged);
+        Assert.DoesNotContain("+staged line", unstaged);
+
+        string staged = await _git.GetDiffTextAsync(_repo, null, null, staged: true, null, [], 3);
+        Assert.Contains("+staged line", staged);
+        Assert.DoesNotContain("+unstaged line", staged);
+
+        string between = await _git.GetDiffTextAsync(_repo, "main", "feature", staged: false, null, ["c.txt"], 3);
+        Assert.Contains("+sea", between);
+        Assert.DoesNotContain("a.txt", between);
+
+        string commit = await _git.GetDiffTextAsync(_repo, null, null, staged: false, "feature", [], 3);
+        Assert.Contains("diff --git a/b.txt b/b.txt", commit);
+        Assert.Contains("-bee", commit);
+    }
+
+    /// <summary>A real merge conflict: the file is unmerged and its base/ours/theirs stages can be extracted.</summary>
+    [Fact]
+    public async Task ExtractsTheThreeStagesOfAConflict() {
+        await Git("switch", "-q", "-c", "other", "main");
+        await File.WriteAllTextAsync(Path.Combine(_repo, "a.txt"), "one\nTHEIRS\n");
+        await Git("commit", "-q", "-am", "theirs");
+        await Git("switch", "-q", "feature");
+        Assert.False((await Git("merge", "other")).Success);
+
+        RepoStatus status = await _git.GetStatusAsync(_repo);
+        Assert.Contains(status.Unstaged, c => c.Path == "a.txt" && c.Kind == ChangeKind.Unmerged);
+
+        string dir = _repo + "-stages";
+        try {
+            string[] expected = ["one", "one\ntwo", "one\nTHEIRS"]; // base, ours, theirs
+            for (int stage = 1; stage <= 3; stage++) {
+                string file = Path.Combine(dir, stage.ToString(), "a.txt");
+                await _git.ExtractFileAsync(_repo, $":{stage}", "a.txt", file);
+                Assert.Equal(expected[stage - 1], (await File.ReadAllTextAsync(file)).Trim().ReplaceLineEndings("\n"));
+            }
+        } finally {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>Log order and parents; a root commit's files come from the empty tree.</summary>
     [Fact]
     public async Task ReadsLogWithParents() {

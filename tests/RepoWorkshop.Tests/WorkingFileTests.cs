@@ -35,6 +35,28 @@ public class WorkingFileTests {
         Assert.Equal(("??", ChangeKind.Untracked, false), (Get("notes.txt").Code, Get("notes.txt").Kind, Get("notes.txt").IsStaged));
     }
 
+    /// <summary>Reverting: new files are only unstaged, renames restore the old path, untracked files are skipped.</summary>
+    [Fact]
+    public void PlansRevertPerKindOfChange() {
+        List<WorkingFile> files = [
+            new("modified.cs", null, ChangeKind.Modified, " M", false, true),
+            new("added.cs", null, ChangeKind.Added, "A ", true, false),
+            new("new.cs", "old.cs", ChangeKind.Renamed, "R ", true, false),
+            new("untracked.txt", null, ChangeKind.Untracked, "??", false, true),
+            new("conflict.cs", null, ChangeKind.Unmerged, "UU", false, true),
+        ];
+
+        (List<string> unstage, List<string> restore) = ChangesViewModel.PlanRevert(files, hasHead: true);
+
+        Assert.Equal(["added.cs", "new.cs"], unstage);
+        Assert.Equal(["modified.cs", "old.cs", "conflict.cs"], restore);
+
+        // Without any commits there is nothing to restore from; staged files are only unstaged.
+        (unstage, restore) = ChangesViewModel.PlanRevert(files, hasHead: false);
+        Assert.Equal(["added.cs", "new.cs"], unstage);
+        Assert.Empty(restore);
+    }
+
     /// <summary>Unchanged items keep their identity (so list selections survive a refresh).</summary>
     [Fact]
     public void SyncKeepsUnchangedItemsAndMatchesOrder() {

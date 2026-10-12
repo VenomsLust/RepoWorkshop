@@ -31,8 +31,12 @@
                         CommandParameter="{Binding #FilesList.SelectedItems}" ToolTip.Tip="Compare the selected files with the last commit in WinMerge" />
             </WrapPanel>
 
+            <Border DockPanel.Dock="Top" Classes="conflict-banner" IsVisible="{Binding HasConflicts}" Margin="12,0,12,8">
+                <TextBlock Text="{Binding ConflictText}" TextWrapping="Wrap" />
+            </Border>
+
             <TextBlock DockPanel.Dock="Bottom" Classes="small secondary" Margin="12,6,12,8" TextWrapping="Wrap"
-                       Text="Ctrl/Shift-click to select several · double-click to diff · right-click for Revert and Delete" />
+                       Text="Ctrl/Shift-click to select several · double-click to diff (or resolve a conflict) · right-click for more" />
 
             <Panel>
                 <ListBox x:Name="FilesList" ItemsSource="{Binding Files}" SelectionMode="Multiple" Background="Transparent"
@@ -53,6 +57,8 @@
                                       CommandParameter="{Binding #FilesList.SelectedItems}" />
                             <MenuItem Header="Diff" Command="{Binding DiffFilesCommand}"
                                       CommandParameter="{Binding #FilesList.SelectedItems}" />
+                            <MenuItem Header="Resolve in WinMerge…" Command="{Binding ResolveConflictsCommand}"
+                                      CommandParameter="{Binding #FilesList.SelectedItems}" />
                             <Separator />
                             <MenuItem Header="Delete…" Command="{Binding DeleteFilesCommand}"
                                       CommandParameter="{Binding #FilesList.SelectedItems}" />
@@ -64,6 +70,7 @@
                                 <TextBlock DockPanel.Dock="Left" Classes="mono small secondary" Text="{Binding Code}" Width="28"
                                            VerticalAlignment="Center" />
                                 <TextBlock Text="{Binding DisplayPath}" Classes.staged="{Binding IsStaged}"
+                                           Classes.conflict="{Binding IsConflict}"
                                            TextTrimming="PrefixCharacterEllipsis" />
                             </DockPanel>
                         </DataTemplate>

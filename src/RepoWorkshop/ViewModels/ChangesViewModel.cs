@@ -37,7 +37,7 @@ public partial class ChangesViewModel : ViewModelBase {
         _services = services;
         Staged.CollectionChanged += OnStagedChanged;
         Unstaged.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUnstaged));
-        Files.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasFiles));
+        Files.CollectionChanged += OnFilesChanged;
     }
 
     /// <summary>Changes in the index, sorted by path.</summary>
@@ -57,6 +57,16 @@ public partial class ChangesViewModel : ViewModelBase {
 
     /// <summary>Whether there are any changes at all.</summary>
     public bool HasFiles => Files.Count > 0;
+
+    /// <summary>Number of files with unresolved merge conflicts.</summary>
+    public int ConflictCount => Files.Count(f => f.IsConflict);
+
+    /// <summary>Whether there are unresolved merge conflicts.</summary>
+    public bool HasConflicts => ConflictCount > 0;
+
+    /// <summary>E.g. "2 conflicted files: resolve each in WinMerge, then Stage it to mark it resolved."</summary>
+    public string ConflictText =>
+        $"{Plural(ConflictCount, "conflicted file")}: resolve each in WinMerge (double-click), then Stage it to mark it resolved.";
 
     /// <summary>The message for the next commit.</summary>
     [ObservableProperty]
@@ -112,6 +122,43 @@ public partial class ChangesViewModel : ViewModelBase {
         DiffSide left = isNew ? DiffSide.Empty("(new file)") : DiffSide.At("HEAD", "HEAD", file.OriginalPath ?? file.Path);
         DiffSide right = file.Kind is ChangeKind.Deleted ? DiffSide.Empty("(deleted)") : DiffSide.Working(file.Path);
         return _services.Diff.DiffFileAsync(_repo.Path, left, right);
+    }
+
+    /// <summary>Opens a conflicted file in WinMerge's three-way merge; saving writes the resolved file.</summary>
+    public Task OpenConflictAsync(WorkingFile file) => _services.Diff.ResolveConflictAsync(_repo.Path, file.Path);
+
+    /// <summary>
+    /// Puts files back to the last commit. Newly added files are only unstaged (kept on disk), a rename
+    /// restores the old path, and untracked files are skipped. Call through <see cref="RepoViewModel.ExecuteAsync"/>.
+    /// </summary>
+    public async Task<GitResult> RevertAsync(IReadOnlyList<WorkingFile> files) {
+        (List<string> unstage, List<string> restore) = PlanRevert(files, _repo.HasHead);
+        if (unstage.Count > 0) {
+            GitResult unstaged = await _services.Git.UnstageAsync(_repo.Path, unstage, _repo.HasHead);
+            if (!unstaged.Success || restore.Count == 0) {
+                return unstaged;
+            }
+        }
+        return await _services.Git.RestoreToHeadAsync(_repo.Path, restore);
+    }
+
+    /// <summary>
+    /// Works out how to revert files: paths to unstage only (not in HEAD) and paths to restore from HEAD.
+    /// Untracked files are left out.
+    /// </summary>
+    internal static (List<string> Unstage, List<string> Restore) PlanRevert(IEnumerable<WorkingFile> files, bool hasHead) {
+        List<WorkingFile> revertible = files.Where(f => f.Kind != ChangeKind.Untracked).ToList();
+        List<string> unstage = revertible
+            .Where(f => f.IsStaged && (!hasHead || f.Kind is ChangeKind.Added or ChangeKind.Renamed))
+            .Select(f => f.Path)
+            .ToList();
+        List<string> restore = hasHead
+            ? revertible
+                .Where(f => f.Kind != ChangeKind.Added)
+                .Select(f => f.Kind == ChangeKind.Renamed && f.OriginalPath is not null ? f.OriginalPath : f.Path)
+                .ToList()
+            : [];
+        return (unstage, restore);
     }
 
     /// <summary>Merges the staged and unstaged halves of a status into one row per path, sorted by path.</summary>
@@ -254,29 +301,7 @@ public partial class ChangesViewModel : ViewModelBase {
             return;
         }
 
-        // A file that isn't in HEAD can only be unstaged; a rename restores the old path and unstages the new one.
-        bool hasHead = _repo.HasHead;
-        List<string> unstage = revertible
-            .Where(f => !hasHead || f.Kind is ChangeKind.Added or ChangeKind.Renamed)
-            .Where(f => f.IsStaged)
-            .Select(f => f.Path)
-            .ToList();
-        List<string> restore = hasHead
-            ? revertible
-                .Where(f => f.Kind != ChangeKind.Added)
-                .Select(f => f.Kind == ChangeKind.Renamed && f.OriginalPath is not null ? f.OriginalPath : f.Path)
-                .ToList()
-            : [];
-
-        await _repo.RunActionAsync("Revert", async () => {
-            if (unstage.Count > 0) {
-                GitResult unstaged = await _services.Git.UnstageAsync(_repo.Path, unstage, hasHead);
-                if (!unstaged.Success || restore.Count == 0) {
-                    return unstaged;
-                }
-            }
-            return await _services.Git.RestoreToHeadAsync(_repo.Path, restore);
-        }, interactive: true);
+        await _repo.RunActionAsync("Revert", () => RevertAsync(revertible), interactive: true);
     }
 
     /// <summary>Opens each selected file's change in WinMerge (up to <see cref="MaxDiffs"/>).</summary>
@@ -291,9 +316,27 @@ public partial class ChangesViewModel : ViewModelBase {
         }
     }
 
-    /// <summary>Opens one file's change in WinMerge (double-click in the panel).</summary>
+    /// <summary>Double-click in the panel: a three-way merge for a conflict, otherwise a diff.</summary>
     [RelayCommand]
-    private Task DiffFile(WorkingFile? file) => file is null ? Task.CompletedTask : ReportErrorsAsync(OpenWorkingDiffAsync(file));
+    private Task DiffFile(WorkingFile? file) {
+        if (file is null) {
+            return Task.CompletedTask;
+        }
+        return ReportErrorsAsync(file.IsConflict ? OpenConflictAsync(file) : OpenWorkingDiffAsync(file));
+    }
+
+    /// <summary>Opens each selected conflicted file in WinMerge's three-way merge.</summary>
+    [RelayCommand(CanExecute = nameof(HasConflicts))]
+    private async Task ResolveConflictsAsync(IList? selected) {
+        List<WorkingFile> conflicts = FilesOf(selected).Where(f => f.IsConflict).ToList();
+        if (conflicts.Count == 0) {
+            await _services.Dialogs.ShowMessageAsync("Resolve conflict", "None of the selected files has a merge conflict.");
+            return;
+        }
+        foreach (WorkingFile file in conflicts.Take(MaxDiffs)) {
+            await ReportErrorsAsync(OpenConflictAsync(file));
+        }
+    }
 
     /// <summary>After confirming, moves the selected files to the Recycle Bin.</summary>
     [RelayCommand]
@@ -354,6 +397,15 @@ public partial class ChangesViewModel : ViewModelBase {
 
     /// <summary>E.g. "1 file" or "3 files".</summary>
     private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    /// <summary>Updates what depends on the file list (counts, conflicts).</summary>
+    private void OnFilesChanged(object? sender, NotifyCollectionChangedEventArgs e) {
+        OnPropertyChanged(nameof(HasFiles));
+        OnPropertyChanged(nameof(ConflictCount));
+        OnPropertyChanged(nameof(HasConflicts));
+        OnPropertyChanged(nameof(ConflictText));
+        ResolveConflictsCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>Updates what depends on whether anything is staged.</summary>
     private void OnStagedChanged(object? sender, NotifyCollectionChangedEventArgs e) {

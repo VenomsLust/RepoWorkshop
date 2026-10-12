@@ -22,6 +22,12 @@ public sealed partial class ApiHost {
     /// <summary>Maximum number of commits returned by repo.log.</summary>
     private const int MaxLogCount = 1000;
 
+    /// <summary>Default size limit (characters) of the text returned by repo.diff.</summary>
+    private const int DefaultDiffChars = 100_000;
+
+    /// <summary>Default lines of context around each change in repo.diff.</summary>
+    private const int DefaultDiffContext = 3;
+
     /// <summary>The "repo" parameter shared by repository methods.</summary>
     private static readonly ApiParamInfo RepoParam =
         P("repo", "string", "Repository name, alias or path. Defaults to the registered repository containing the current directory.");
@@ -224,6 +230,40 @@ public sealed partial class ApiHost {
                 return new { Repo = repo.Name, Commit = CommitDto(commit), Files = files.Select(FileDto) };
             });
 
+        yield return Query("repo.diff", "Unified diff text: unstaged changes by default; or staged, or from/to revisions, or one commit. Untracked files are not included.",
+            [RepoParam, ProjectScopeParam,
+             P("staged", "bool", "Diff the staged changes (index vs HEAD) instead of the unstaged ones."),
+             P("from", "string", "Compare from this revision (to the working tree, or to \"to\")."),
+             P("to", "string", "Compare to this revision (needs \"from\")."),
+             P("commit", "string", "Show this commit's patch (vs its first parent)."),
+             P("paths", "string[]", "Limit the diff to these repository-relative paths."),
+             P("context", "int", $"Lines of context around each change (default {DefaultDiffContext})."),
+             P("maxChars", "int", $"Truncate the text after this many characters (default {DefaultDiffChars}).")],
+            async call => {
+                RepoViewModel repo = call.Repo();
+                string? commit = call.String("commit");
+                string? from = call.String("from");
+                string? to = call.String("to");
+                bool staged = call.Bool("staged");
+                if (commit is not null && (from is not null || to is not null || staged)) {
+                    throw ApiCall.Invalid("\"commit\" can't be combined with \"from\", \"to\" or \"staged\".");
+                }
+                if (to is not null && from is null) {
+                    throw ApiCall.Invalid("\"to\" needs \"from\".");
+                }
+
+                int context = Math.Clamp(call.Int("context", DefaultDiffContext), 0, 1000);
+                int maxChars = Math.Max(1000, call.Int("maxChars", DefaultDiffChars));
+                string diff = await call.Services.Git.GetDiffTextAsync(repo.Path, from, to, staged, commit, call.StringList("paths"), context);
+                bool truncated = diff.Length > maxChars;
+                return new {
+                    Repo = repo.Name,
+                    Diff = truncated ? diff[..maxChars] : diff,
+                    Truncated = truncated,
+                    TotalChars = diff.Length,
+                };
+            });
+
         yield return Query("repo.stashes", "List a repository's stashes.", [RepoParam, ProjectScopeParam],
             async call => {
                 RepoViewModel repo = call.Repo();
@@ -351,6 +391,41 @@ public sealed partial class ApiHost {
                 });
             });
 
+        yield return Command("repo.revert", "Put files back to the last commit (discarding their changes). Newly added files are only unstaged; untracked files are skipped. Asks the user to confirm.",
+            [RepoParam, ProjectScopeParam,
+             P("paths", "string[]", "Repository-relative paths of changed files to revert.", required: true)],
+            async call => {
+                RepoViewModel repo = call.Repo();
+                await repo.RefreshAsync();
+                IReadOnlyList<string> paths = call.StringList("paths");
+                if (paths.Count == 0) {
+                    throw ApiCall.Invalid("Pass the \"paths\" to revert.");
+                }
+
+                List<string> unknown = paths.Where(p => repo.Changes.Files.All(f => f.Path != p)).ToList();
+                if (unknown.Count > 0) {
+                    throw ApiCall.NotFound($"No changes to revert in: {string.Join(", ", unknown)}. Use repo.status to see the changed files.");
+                }
+                List<WorkingFile> files = repo.Changes.Files.Where(f => paths.Contains(f.Path)).ToList();
+                List<string> skipped = files.Where(f => f.Kind == ChangeKind.Untracked).Select(f => f.Path).ToList();
+                List<WorkingFile> revertible = files.Where(f => f.Kind != ChangeKind.Untracked).ToList();
+                if (revertible.Count == 0) {
+                    throw ApiCall.Invalid("Untracked files have no committed version to revert to.");
+                }
+
+                await call.ConfirmAsync("Revert files",
+                    $"Revert {revertible.Count} file(s) in {repo.Name} to the last commit, discarding their changes:\n" +
+                    string.Join('\n', revertible.Take(10).Select(f => f.Path)) +
+                    (revertible.Count > 10 ? $"\n…and {revertible.Count - 10} more" : ""), "Revert");
+                GitResult result = await repo.ExecuteAsync(() => repo.Changes.RevertAsync(revertible));
+                ApiCall.EnsureSuccess(result, "Revert");
+                return new {
+                    Reverted = revertible.Select(f => f.Path),
+                    Skipped = skipped.Count > 0 ? skipped : null,
+                    Status = RepoSummary(repo),
+                };
+            });
+
         yield return Command("repo.commit", "Commit the staged changes. Amending a commit that was already pushed asks the user to confirm.",
             [RepoParam, ProjectScopeParam,
              P("message", "string", "Commit message (may span several lines).", required: true),
@@ -467,6 +542,19 @@ public sealed partial class ApiHost {
                                     ?? throw ApiCall.NotFound($"\"{path}\" has no {(staged ? "staged" : "unstaged")} changes in {repo.Name}.");
                 await (staged ? repo.Changes.OpenStagedDiffAsync(change) : repo.Changes.OpenUnstagedDiffAsync(change));
                 return new { Opened = change.Path, Staged = staged };
+            });
+
+        yield return Command("ui.resolveConflict", "Open WinMerge's three-way merge for the user on a conflicted file (ours | base | theirs); saving writes the resolved file. Stage it afterwards (repo.stage) to mark it resolved.",
+            [RepoParam, ProjectScopeParam, P("path", "string", "Repository-relative path of a conflicted file.", required: true)],
+            async call => {
+                RepoViewModel repo = call.Repo();
+                await repo.RefreshAsync();
+                string path = call.RequiredString("path").Replace('\\', '/');
+                WorkingFile file = repo.Changes.Files.FirstOrDefault(f => f.IsConflict && string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase))
+                                   ?? throw ApiCall.NotFound($"\"{path}\" has no merge conflict in {repo.Name}. " +
+                                                             $"Conflicted files: {string.Join(", ", repo.Changes.Files.Where(f => f.IsConflict).Select(f => f.Path).DefaultIfEmpty("(none)"))}.");
+                await repo.Changes.OpenConflictAsync(file);
+                return new { Opened = file.Path };
             });
 
         yield return Command("ui.compareBranch", "Open WinMerge for the user comparing the current branch with another branch (all differing files).",

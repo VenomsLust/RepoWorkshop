@@ -94,6 +94,32 @@ public sealed class DiffService {
         return changes.Count;
     }
 
+    /// <summary>
+    /// Opens a merge conflict in WinMerge's three-way view: ours (stage 2), the common base (stage 1)
+    /// and theirs (stage 3). Saving the middle pane writes the resolved file into the working tree.
+    /// A side that doesn't exist (e.g. a file added on both branches has no base) is shown empty.
+    /// </summary>
+    public async Task ResolveConflictAsync(string repoPath, string path) {
+        string temp = NewTempFolder();
+        string ours = await ExtractStageOrEmptyAsync(repoPath, 2, path, Path.Combine(temp, "ours"));
+        string baseFile = await ExtractStageOrEmptyAsync(repoPath, 1, path, Path.Combine(temp, "base"));
+        string theirs = await ExtractStageOrEmptyAsync(repoPath, 3, path, Path.Combine(temp, "theirs"));
+        string output = Path.Combine(repoPath, ToLocal(path));
+        _winMerge.MergeThreeWay(ours, baseFile, theirs, output, $"Ours: {path}", $"Base (save here): {path}", $"Theirs: {path}");
+    }
+
+    /// <summary>Extracts one index stage of a conflicted file, or writes an empty file if that stage doesn't exist.</summary>
+    private async Task<string> ExtractStageOrEmptyAsync(string repoPath, int stage, string path, string tempDir) {
+        string file = Path.Combine(tempDir, Path.GetFileName(ToLocal(path)));
+        try {
+            await _git.ExtractFileAsync(repoPath, $":{stage}", path, file);
+        } catch (GitException) {
+            Directory.CreateDirectory(tempDir);
+            await File.WriteAllBytesAsync(file, []);
+        }
+        return file;
+    }
+
     /// <summary>Returns a file on disk holding the side's content, and whether it is the live working-tree file.</summary>
     private async Task<(string Path, bool IsWorkingFile)> MaterializeAsync(string repoPath, DiffSide side, string tempDir) {
         string fileName = side.Path is null ? "empty" : Path.GetFileName(ToLocal(side.Path));

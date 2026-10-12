@@ -75,6 +75,16 @@
             <Setter Property="Foreground" Value="{DynamicResource StagedBrush}" />
             <Setter Property="FontStyle" Value="Italic" />
         </Style>
+        <Style Selector="TextBlock.conflict">
+            <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.conflict-banner">
+            <Setter Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
         <Style Selector="TextBlock.head">
             <Setter Property="FontWeight" Value="Bold" />
         </Style>

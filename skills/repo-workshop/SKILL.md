@@ -40,6 +40,9 @@ From PowerShell: `& "$env:LOCALAPPDATA\Programs\RepoWorkshop\rw.exe" project.lis
 | Branches of a repo | `rw repo.branches --repo R` (add `--remote false` for local only) |
 | History | `rw repo.log --repo R --ref main --max 20`; one commit: `rw repo.show --repo R --commit <hash>` |
 | Stage and commit | `rw repo.stage --repo R --paths src/a.cs` (or `--all`), then `rw repo.commit --repo R --message "..."` |
+| Unstage | `rw repo.unstage --repo R --paths src/a.cs` (or `--all`); the working-tree change is kept |
+| Read a diff | `rw repo.diff --repo R` (unstaged), `--staged`, `--from main [--to feature]`, `--commit <hash>`, `--paths a.cs` |
+| Discard changes | `rw repo.revert --repo R --paths src/a.cs` (asks the user; new files are only unstaged, untracked files skipped) |
 | Branch work | `rw repo.checkout`, `rw repo.createBranch --branch x [--from main]`, `rw repo.merge --branch x` |
 | Stash | `rw repo.stash --message "wip"`, `rw repo.stashes`, `rw repo.stashPop` |
 | Push | `rw repo.push --repo R` (sets the upstream on first push) |
@@ -56,11 +59,19 @@ When the user wants to **see or review** changes, open WinMerge for them instead
 - `rw ui.show --repo R --tab changes`: bring the app forward on a repo and tab (`branches`, `changes`, `history`, `stashes`).
 - `rw ui.notify --message "Done: created feature/x in 4 repos"`: leave the user a note in the app's status bar.
 
-`rw` does not return diff text. To read a diff yourself, use plain `git diff` in the repo.
+To read a diff yourself, use `rw repo.diff`. It returns unified diff text, cut off at `maxChars` (default 100,000) with `truncated: true` when it's larger; narrow it with `--paths`. Untracked files aren't included.
+
+## Merge conflicts
+
+Conflicted files appear in `repo.status` as `"kind": "unmerged"`.
+
+- To let the user resolve them, run `rw ui.resolveConflict --repo R --path <file>`. It opens WinMerge's three-way merge (ours | base | theirs); saving the middle pane writes the resolved file.
+- Once a file is resolved (by the user, or by you editing out the conflict markers), stage it with `rw repo.stage --paths <file>` to mark it resolved. Then commit to finish the merge.
+- Don't resolve conflicts yourself unless the user asks; show them with `ui.resolveConflict` instead.
 
 ## Confirmations and safety
 
-These methods make the app ask the user to approve in a dialog: `repo.deleteBranch`, `repo.stashDrop`, `project.delete`, `project.removeRepo`, and `repo.commit --amend` on an already-pushed commit. The call blocks until they answer.
+These methods make the app ask the user to approve in a dialog: `repo.revert`, `repo.deleteBranch`, `repo.stashDrop`, `project.delete`, `project.removeRepo`, and `repo.commit --amend` on an already-pushed commit. The call blocks until they answer.
 
 - Error code **-32001** means **the user declined**. Do not retry or look for a workaround; tell the user and ask how they'd like to proceed.
 - Only push, merge, delete or amend when the user has asked for it. Creating branches, staging and committing as part of a requested task is fine.
