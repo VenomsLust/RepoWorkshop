@@ -53,6 +53,7 @@ rw ui.compareBranch --branch feature/x   # opens WinMerge for the user
 ```
 
 - `rw` prints JSON results (errors as JSON on stderr, exit code 1) and starts the app if it isn't running.
+- `--message-file <path>` / `--json-file <path>` (use `-` for stdin) pass multi-line text without shell-quoting problems.
 - `repo.diff` returns diff text; `ui.resolveConflict` opens a conflict in WinMerge's three-way merge.
 - Destructive requests (revert files, delete branch, drop stash, remove project/repo, amend a pushed commit) show a confirmation dialog in the app. Declining returns error code -32001.
 - The API can be turned off in **Settings → Automation**.

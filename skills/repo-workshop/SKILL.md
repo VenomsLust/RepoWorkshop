@@ -22,6 +22,15 @@ From PowerShell: `& "$env:LOCALAPPDATA\Programs\RepoWorkshop\rw.exe" project.lis
 - Syntax: `rw <method> --name value ...`. Booleans: `--flag` (true) or `--flag false`. Lists: repeat the option (`--paths a.txt --paths b.txt`). Or pass `--json '{"paths":["a.txt"]}'`.
 - `--repo` accepts a repo name, alias or path. **If omitted, it defaults to the registered repo containing the current directory**, so `cd` into a repo and skip it.
 - Results are JSON on stdout (exit code 0). Errors are JSON on stderr: `{"error":{"code":...,"message":"..."}}` with exit code 1. Exit code 3 means the app couldn't be reached.
+- **Multi-line text** (commit messages): use `--message-file -` with a here-doc, or `--message-file msg.txt`, instead of `--message "..."`. Shell quoting, especially in Windows PowerShell 5.1, can drop double quotes or split arguments. `--json-file <path|->` does the same for any parameters.
+
+  ```bash
+  "$RW" repo.commit --repo R --message-file - <<'EOF'
+  Subject line
+
+  Body with "quotes" and more lines.
+  EOF
+  ```
 - `rw help` lists every method; `rw help <method>` shows its parameters. Check it rather than guessing parameter names: unknown parameters are rejected.
 
 ## Start here

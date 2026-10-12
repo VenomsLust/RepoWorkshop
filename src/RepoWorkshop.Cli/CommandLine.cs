@@ -23,8 +23,13 @@ public sealed record CommandLine(
     /// <summary>
     /// Parses <c>rw &lt;method&gt; [--name value | --flag]... [--json '{...}']</c>.
     /// Repeating an option makes a list; <c>--some-name</c> becomes <c>someName</c>.
+    /// <c>--message-file</c> and <c>--json-file</c> read a value from a file, or standard input for "-",
+    /// which avoids shell quoting problems with multi-line text.
     /// </summary>
-    public static CommandLine Parse(IReadOnlyList<string> args) {
+    /// <param name="args">The command-line arguments.</param>
+    /// <param name="readText">Reads a file's text ("-" for standard input); replaceable for tests.</param>
+    public static CommandLine Parse(IReadOnlyList<string> args, Func<string, string>? readText = null) {
+        readText ??= ReadTextFromFileOrStdin;
         string? method = null;
         JsonObject parameters = new();
         bool noLaunch = false;
@@ -78,6 +83,12 @@ public sealed record CommandLine(
                 case "json":
                     MergeJson(parameters, value ?? throw new UsageException("--json needs a JSON object."));
                     continue;
+                case "json-file":
+                    MergeJson(parameters, ReadOrThrow(readText, value, name));
+                    continue;
+                case "message-file":
+                    parameters["message"] = ReadOrThrow(readText, value, name);
+                    continue;
             }
 
             Add(parameters, ToCamelCase(name), value is null ? JsonValue.Create(true) : JsonValue.Create(value));
@@ -93,6 +104,21 @@ public sealed record CommandLine(
             ? name
             : parts[0] + string.Concat(parts.Skip(1).Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
     }
+
+    /// <summary>Reads the file named by an option's value, turning failures into usage errors.</summary>
+    private static string ReadOrThrow(Func<string, string> readText, string? path, string option) {
+        if (path is null) {
+            throw new UsageException($"--{option} needs a file path, or - for standard input.");
+        }
+        try {
+            return readText(path);
+        } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) {
+            throw new UsageException($"--{option}: can't read \"{path}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>Reads a file as text, or all of standard input for "-".</summary>
+    private static string ReadTextFromFileOrStdin(string path) => path == "-" ? Console.In.ReadToEnd() : File.ReadAllText(path);
 
     /// <summary>Adds a parameter value; a repeated name turns into a list.</summary>
     private static void Add(JsonObject parameters, string name, JsonNode node) {

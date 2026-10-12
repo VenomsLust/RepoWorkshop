@@ -42,6 +42,26 @@ public class CommandLineTests {
         Assert.Empty(cmd.Params);
     }
 
+    /// <summary>--message-file and --json-file read from a file or "-" (stdin), keeping quotes and newlines intact.</summary>
+    [Fact]
+    public void ReadsMessageAndJsonFromFiles() {
+        Dictionary<string, string> files = new() {
+            ["msg.txt"] = "Subject with \"quotes\"\n\n- detail line\n",
+            ["-"] = "{\"paths\":[\"a b.txt\"],\"all\":false}",
+        };
+
+        CommandLine cmd = CommandLine.Parse(["repo.commit", "--message-file", "msg.txt", "--json-file", "-"], path => files[path]);
+
+        Assert.Equal("Subject with \"quotes\"\n\n- detail line\n", cmd.Params["message"]!.GetValue<string>());
+        Assert.Equal("a b.txt", cmd.Params["paths"]![0]!.GetValue<string>());
+        Assert.False(cmd.Params["all"]!.GetValue<bool>());
+
+        UsageException missing = Assert.Throws<UsageException>(
+            () => CommandLine.Parse(["repo.commit", "--message-file", "nope.txt"], _ => throw new FileNotFoundException("not found")));
+        Assert.Contains("nope.txt", missing.Message);
+        Assert.Throws<UsageException>(() => CommandLine.Parse(["repo.commit", "--message-file"]));
+    }
+
     /// <summary>Positional arguments after the method, and non-object JSON, are rejected.</summary>
     [Fact]
     public void RejectsStrayArguments() {

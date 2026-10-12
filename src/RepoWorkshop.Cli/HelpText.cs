@@ -21,6 +21,8 @@ public static class HelpText {
             sb.AppendLine("Run \"rw help <method>\" for its parameters. Results are JSON; errors go to stderr with exit code 1.");
             sb.AppendLine("Options: --flag (true) or --flag false; repeat an option for a list (--paths a --paths b);");
             sb.AppendLine("--json '{...}' passes parameters as JSON. \"repo\" defaults to the repository containing the current directory.");
+            sb.AppendLine("--message-file <path> and --json-file <path> read the message / parameters from a file (- for stdin),");
+            sb.AppendLine("which avoids shell quoting problems with multi-line text.");
             sb.AppendLine("Client options: --no-launch (don't start the app), --timeout <seconds> (default 600), --raw (help as JSON).");
             return sb.ToString();
         }
