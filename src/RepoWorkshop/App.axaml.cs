@@ -3,59 +3,59 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using RepoWorkshop.Automation;
+using RepoWorkshop.Models;
 using RepoWorkshop.Services;
 using RepoWorkshop.ViewModels;
 using RepoWorkshop.Views;
 
 namespace RepoWorkshop;
 
-public partial class App : Application
-{
-    public override void Initialize()
-    {
+/// <summary>The application: wires up the services, main window and API.</summary>
+public partial class App : Application {
+    /// <summary>Applies the "Dark", "Light" or "System" theme.</summary>
+    public static void ApplyTheme(string? theme) {
+        if (Current is null) {
+            return;
+        }
+        Current.RequestedThemeVariant = theme switch {
+            "Light" => ThemeVariant.Light,
+            "System" => ThemeVariant.Default,
+            _ => ThemeVariant.Dark,
+        };
+    }
+
+    /// <summary>Loads App.axaml.</summary>
+    public override void Initialize() {
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override void OnFrameworkInitializationCompleted()
-    {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
+    /// <summary>Creates the services, main window and API host.</summary>
+    public override void OnFrameworkInitializationCompleted() {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
             DiffService.CleanupOldTempFiles();
 
-            var store = new SettingsStore();
-            var settings = store.Load();
+            SettingsStore store = new();
+            AppSettings settings = store.Load();
             ApplyTheme(settings.Theme);
-            var log = new LogService();
-            var git = new GitService(log);
-            var winMerge = new WinMergeService(() => settings.WinMergePath);
-            var diff = new DiffService(git, winMerge);
+            LogService log = new();
+            GitService git = new(log);
+            WinMergeService winMerge = new(() => settings.WinMergePath);
+            DiffService diff = new(git, winMerge);
 
-            var window = new MainWindow();
-            var dialogs = new DialogService(() => window);
-            var services = new AppServices(store, settings, git, winMerge, diff, log, dialogs);
+            MainWindow window = new();
+            DialogService dialogs = new(() => window);
+            AppServices services = new(store, settings, git, winMerge, diff, log, dialogs);
 
-            var main = new MainViewModel(services);
+            MainViewModel main = new(services);
             window.DataContext = main;
             desktop.MainWindow = window;
 
-            var api = new ApiHost(main, services);
+            ApiHost api = new(main, services);
             _ = api.ApplySettingsAsync();
             main.SettingsApplied += () => _ = api.ApplySettingsAsync();
             desktop.Exit += (_, _) => api.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    public static void ApplyTheme(string? theme)
-    {
-        if (Current is null)
-            return;
-        Current.RequestedThemeVariant = theme switch
-        {
-            "Light" => ThemeVariant.Light,
-            "System" => ThemeVariant.Default,
-            _ => ThemeVariant.Dark,
-        };
     }
 }

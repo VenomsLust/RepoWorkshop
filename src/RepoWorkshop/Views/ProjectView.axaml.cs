@@ -2,10 +2,10 @@ using Avalonia.Controls;
 
 namespace RepoWorkshop.Views;
 
-public partial class ProjectView : UserControl
-{
-    public ProjectView()
-    {
+/// <summary>A project: its repositories and project-wide actions.</summary>
+public partial class ProjectView : UserControl {
+    /// <summary>Builds the view.</summary>
+    public ProjectView() {
         InitializeComponent();
     }
 }

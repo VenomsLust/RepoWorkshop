@@ -2,10 +2,10 @@ using Avalonia.Controls;
 
 namespace RepoWorkshop.Views;
 
-public partial class HistoryView : UserControl
-{
-    public HistoryView()
-    {
+/// <summary>The History tab: commits and the files each one changed.</summary>
+public partial class HistoryView : UserControl {
+    /// <summary>Builds the view.</summary>
+    public HistoryView() {
         InitializeComponent();
     }
 }

@@ -4,45 +4,34 @@ using Avalonia.Threading;
 
 namespace RepoWorkshop.Services;
 
-public enum LogLevel
-{
-    Info,
-    Command,
-    Error,
-}
-
-public sealed record LogEntry(DateTime Time, LogLevel Level, string Text)
-{
-    public string TimeText => Time.ToString("HH:mm:ss");
-
-    public bool IsError => Level == LogLevel.Error;
-
-    public bool IsCommand => Level == LogLevel.Command;
-}
-
 /// <summary>An output log of git commands and their results, safe to write from any thread.</summary>
-public sealed class LogService
-{
+public sealed class LogService {
+    /// <summary>Oldest entries are dropped beyond this many.</summary>
     private const int MaxEntries = 2000;
 
-    public ObservableCollection<LogEntry> Entries { get; } = [];
-
+    /// <summary>Raised on the UI thread after an entry is added.</summary>
     public event Action<LogEntry>? EntryAdded;
 
+    /// <summary>The log, oldest first. Only modified on the UI thread.</summary>
+    public ObservableCollection<LogEntry> Entries { get; } = [];
+
+    /// <summary>Logs an informational message.</summary>
     public void Info(string text) => Add(LogLevel.Info, text);
 
+    /// <summary>Logs a command being run.</summary>
     public void Command(string text) => Add(LogLevel.Command, text);
 
+    /// <summary>Logs an error.</summary>
     public void Error(string text) => Add(LogLevel.Error, text);
 
-    private void Add(LogLevel level, string text)
-    {
-        var entry = new LogEntry(DateTime.Now, level, text.TrimEnd());
-        Dispatcher.UIThread.Post(() =>
-        {
+    /// <summary>Adds an entry on the UI thread.</summary>
+    private void Add(LogLevel level, string text) {
+        LogEntry entry = new(DateTime.Now, level, text.TrimEnd());
+        Dispatcher.UIThread.Post(() => {
             Entries.Add(entry);
-            while (Entries.Count > MaxEntries)
+            while (Entries.Count > MaxEntries) {
                 Entries.RemoveAt(0);
+            }
             EntryAdded?.Invoke(entry);
         });
     }

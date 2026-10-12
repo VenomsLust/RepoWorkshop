@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Report .editorconfig code-style rules (braces, explicit types, ...) during build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Required for the compiler to check XML doc comments. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

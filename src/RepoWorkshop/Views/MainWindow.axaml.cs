@@ -3,20 +3,20 @@ using Avalonia.Controls;
 
 namespace RepoWorkshop.Views;
 
-public partial class MainWindow : Window
-{
-    public MainWindow()
-    {
+/// <summary>The main window: projects on the left, the selected project on the right, log and status at the bottom.</summary>
+public partial class MainWindow : Window {
+    /// <summary>Builds the window and keeps the output log scrolled to the newest entry.</summary>
+    public MainWindow() {
         InitializeComponent();
+        if (LogList.Items is INotifyCollectionChanged items) {
+            items.CollectionChanged += OnLogItemsChanged;
+        }
+    }
 
-        // Keep the newest log entry in view.
-        if (LogList.Items is INotifyCollectionChanged items)
-        {
-            items.CollectionChanged += (_, e) =>
-            {
-                if (e.Action == NotifyCollectionChangedAction.Add && LogList.ItemCount > 0)
-                    LogList.ScrollIntoView(LogList.ItemCount - 1);
-            };
+    /// <summary>Scrolls the log to a newly added entry.</summary>
+    private void OnLogItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) {
+        if (e.Action == NotifyCollectionChangedAction.Add && LogList.ItemCount > 0) {
+            LogList.ScrollIntoView(LogList.ItemCount - 1);
         }
     }
 }

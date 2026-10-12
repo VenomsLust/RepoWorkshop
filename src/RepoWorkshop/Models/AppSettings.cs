@@ -3,8 +3,8 @@ using System.Collections.Generic;
 
 namespace RepoWorkshop.Models;
 
-public sealed class AppSettings
-{
+/// <summary>Everything Repo Workshop saves between sessions.</summary>
+public sealed class AppSettings {
     /// <summary>Explicit path to WinMergeU.exe; auto-detected when empty.</summary>
     public string? WinMergePath { get; set; }
 
@@ -17,7 +17,9 @@ public sealed class AppSettings
     /// <summary>Whether the named-pipe API (used by the rw command and LLM agents) is running.</summary>
     public bool ApiEnabled { get; set; } = true;
 
+    /// <summary>The project selected when the app last closed.</summary>
     public Guid? LastProjectId { get; set; }
 
+    /// <summary>All projects, in display order.</summary>
     public List<ProjectModel> Projects { get; set; } = [];
 }

@@ -2,10 +2,10 @@ using Avalonia.Controls;
 
 namespace RepoWorkshop.Views;
 
-public partial class StashesView : UserControl
-{
-    public StashesView()
-    {
+/// <summary>The Stashes tab.</summary>
+public partial class StashesView : UserControl {
+    /// <summary>Builds the view.</summary>
+    public StashesView() {
         InitializeComponent();
     }
 }

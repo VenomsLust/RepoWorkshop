@@ -1,7 +1,7 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace RepoWorkshop.ViewModels;
 
-public abstract class ViewModelBase : ObservableObject
-{
+/// <summary>Base class for view models; the view locator maps each one to its view.</summary>
+public abstract class ViewModelBase : ObservableObject {
 }
