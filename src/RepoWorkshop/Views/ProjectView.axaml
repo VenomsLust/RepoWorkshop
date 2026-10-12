@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             x:Class="RepoWorkshop.Views.ProjectView"
+             x:DataType="vm:ProjectViewModel">
+
+    <DockPanel>
+        <!-- Project header and project-wide actions -->
+        <StackPanel DockPanel.Dock="Top" Margin="16,12,16,8" Spacing="10">
+            <TextBlock Classes="title" Text="{Binding Name}" />
+            <WrapPanel>
+                <StackPanel Classes="toolbar" Margin="0,0,12,6">
+                    <Button Content="Add repository…" Command="{Binding AddRepoCommand}" />
+                    <Button Content="Add from folder…" Command="{Binding AddReposFromFolderCommand}"
+                            ToolTip.Tip="Add every git repository found in a folder" />
+                </StackPanel>
+                <StackPanel Classes="toolbar" Margin="0,0,12,6">
+                    <Button Content="Refresh all" Command="{Binding RefreshAllCommand}" />
+                    <Button Content="Fetch all" Command="{Binding FetchAllCommand}" />
+                    <Button Content="Pull all" Command="{Binding PullAllCommand}" ToolTip.Tip="Fast-forward only" />
+                </StackPanel>
+                <StackPanel Classes="toolbar" Margin="0,0,0,6">
+                    <Button Content="Switch all to…" Command="{Binding SwitchAllCommand}"
+                            ToolTip.Tip="Switch every repository that has the branch" />
+                    <Button Content="New branch in all…" Command="{Binding CreateBranchAllCommand}"
+                            ToolTip.Tip="Create a branch from each repository's current HEAD" />
+                </StackPanel>
+            </WrapPanel>
+        </StackPanel>
+
+        <Grid RowDefinitions="Auto,2*,Auto,3*">
+            <!-- Repository list -->
+            <DockPanel Grid.Row="0" Margin="16,4,16,4">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                    <Button Content="Rename" Command="{Binding RenameRepoCommand}" Padding="8,2" FontSize="12" />
+                    <Button Content="Remove" Command="{Binding RemoveRepoCommand}" Padding="8,2" FontSize="12" />
+                </StackPanel>
+                <TextBlock Classes="section" Text="REPOSITORIES" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <Panel Grid.Row="1">
+                <ListBox ItemsSource="{Binding Repos}" SelectedItem="{Binding SelectedRepo}" Margin="8,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RepoViewModel">
+                            <Grid Margin="0,2" ColumnDefinitions="*,220,110,100,90">
+                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Classes="small secondary" Text="{Binding Path}" TextTrimming="PrefixCharacterEllipsis"
+                                               ToolTip.Tip="{Binding Path}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Classes="branch" Text="{Binding HeadText}"
+                                           VerticalAlignment="Center" Margin="0,0,12,0" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding ChangesText}" Classes.secondary="{Binding !IsDirty}"
+                                           VerticalAlignment="Center" />
+                                <Panel Grid.Column="4" VerticalAlignment="Center">
+                                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" MinWidth="0" />
+                                    <TextBlock Classes="error small" Text="⚠ error" IsVisible="{Binding HasError}"
+                                               ToolTip.Tip="{Binding Error}" />
+                                </Panel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel IsVisible="{Binding !Repos.Count}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                    <TextBlock Classes="secondary" Text="This project has no repositories yet." HorizontalAlignment="Center" />
+                    <Button Content="Add repository…" Command="{Binding AddRepoCommand}" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Panel>
+
+            <GridSplitter Grid.Row="2" Height="5" Background="Transparent" ResizeDirection="Rows"
+                          BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" />
+
+            <!-- Selected repository -->
+            <ContentControl Grid.Row="3" Content="{Binding SelectedRepo}" />
+        </Grid>
+    </DockPanel>
+</UserControl>

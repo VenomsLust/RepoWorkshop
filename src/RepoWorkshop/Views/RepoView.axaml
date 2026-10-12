@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RepoWorkshop.ViewModels"
+             xmlns:m="using:RepoWorkshop.Models"
+             x:Class="RepoWorkshop.Views.RepoView"
+             x:DataType="vm:RepoViewModel">
+
+    <UserControl.Resources>
+        <DataTemplate x:Key="BranchTemplate" x:DataType="m:BranchInfo">
+            <Grid Margin="0,1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="BranchName" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="BranchTracking" />
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="BranchDate" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="●" Classes="branch" IsVisible="{Binding IsHead}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" Classes.head="{Binding IsHead}" Margin="0,0,24,0" />
+                <TextBlock Grid.Column="2" Text="{Binding TrackingText}" Classes="secondary" Margin="0,0,24,0" />
+                <TextBlock Grid.Column="3" Text="{Binding DateText}" Classes="secondary mono small" Margin="0,0,24,0"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4" Text="{Binding Subject}" Classes="secondary" TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <DockPanel Margin="16,8,16,12">
+        <!-- Repository header -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Right" Classes="toolbar" VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="60" MinWidth="0" VerticalAlignment="Center" />
+                <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+                <Button Content="Fetch" Command="{Binding FetchCommand}" />
+                <Button Content="Pull" Command="{Binding PullCommand}" ToolTip.Tip="Fast-forward only" />
+                <Button Content="Push" Command="{Binding PushCommand}" />
+                <Button Content="Open folder" Command="{Binding OpenInExplorerCommand}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Classes="subtitle" Text="{Binding Name}" />
+                <TextBlock Classes="subtitle branch" Text="{Binding HeadText}" FontWeight="Normal" />
+                <TextBlock Classes="secondary" Text="{Binding SyncText}" VerticalAlignment="Bottom" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border DockPanel.Dock="Top" IsVisible="{Binding HasError}" Padding="10,6" Margin="0,0,0,8" CornerRadius="4"
+                BorderBrush="{StaticResource ErrorBrush}" BorderThickness="1">
+            <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" />
+        </Border>
+
+        <TabControl Padding="0,8,0,0">
+            <TabControl.Styles>
+                <Style Selector="TabItem">
+                    <Setter Property="FontSize" Value="16" />
+                    <Setter Property="MinHeight" Value="36" />
+                </Style>
+                <Style Selector="TabControl TabControl TabItem">
+                    <Setter Property="FontSize" Value="14" />
+                    <Setter Property="MinHeight" Value="30" />
+                </Style>
+            </TabControl.Styles>
+            <TabItem Header="Branches">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
+                        <Button Content="Checkout" Command="{Binding CheckoutCommand}"
+                                ToolTip.Tip="Switch to the selected branch (a remote branch gets a local tracking branch)" />
+                        <Button Content="New branch…" Command="{Binding NewBranchCommand}"
+                                ToolTip.Tip="Create a branch from the selected branch (or HEAD) and switch to it" />
+                        <Button Content="Delete" Command="{Binding DeleteBranchCommand}" />
+                        <Separator />
+                        <Button Content="Merge into current" Command="{Binding MergeIntoCurrentCommand}" />
+                        <Button Content="Compare with current (WinMerge)" Command="{Binding CompareWithCurrentCommand}" />
+                    </StackPanel>
+                    <TabControl SelectedIndex="{Binding BranchTabIndex}" Padding="0,4,0,0">
+                        <TabItem Header="{Binding LocalBranches.Count, StringFormat='Local ({0})'}">
+                            <ListBox x:Name="LocalBranchList" ItemsSource="{Binding LocalBranches}"
+                                     SelectedItem="{Binding SelectedLocalBranch}"
+                                     ItemTemplate="{StaticResource BranchTemplate}" Grid.IsSharedSizeScope="True" />
+                        </TabItem>
+                        <TabItem Header="{Binding RemoteBranches.Count, StringFormat='Remote ({0})'}">
+                            <ListBox x:Name="RemoteBranchList" ItemsSource="{Binding RemoteBranches}"
+                                     SelectedItem="{Binding SelectedRemoteBranch}"
+                                     ItemTemplate="{StaticResource BranchTemplate}" Grid.IsSharedSizeScope="True" />
+                        </TabItem>
+                    </TabControl>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="{Binding ChangeCount, StringFormat='Changes ({0})'}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Classes="toolbar" Margin="0,0,0,8">
+                        <Button Content="Diff in WinMerge" Command="{Binding DiffChangeCommand}"
+                                ToolTip.Tip="Compare HEAD with the working copy (double-click a file)" />
+                        <Button Content="Show in Explorer" Command="{Binding OpenChangedFileCommand}" />
+                    </StackPanel>
+                    <Panel>
+                        <ListBox x:Name="ChangesList" ItemsSource="{Binding Changes}" SelectedItem="{Binding SelectedChange}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="m:FileChange">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Classes="mono branch" Text="{Binding Code}" Width="36" />
+                                        <TextBlock DockPanel.Dock="Right" Classes="secondary small" Text="{Binding Kind}"
+                                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                                        <TextBlock Text="{Binding DisplayPath}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Classes="secondary" Text="Working tree is clean." IsVisible="{Binding !IsDirty}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Panel>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>
