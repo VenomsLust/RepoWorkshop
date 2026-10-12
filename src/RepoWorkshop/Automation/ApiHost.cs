@@ -63,12 +63,13 @@ public sealed partial class ApiHost : IAsyncDisposable {
         }
     }
 
-    /// <summary>Stops the server.</summary>
+    /// <summary>Stops the server. Safe to call from any thread; it never needs the UI thread.</summary>
     public async ValueTask DisposeAsync() {
-        if (_server is not null) {
-            await _server.DisposeAsync();
-        }
+        ApiServer? server = _server;
         _server = null;
+        if (server is not null) {
+            await server.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <summary>Validates a request's method and parameter names, then runs it on the UI thread.</summary>

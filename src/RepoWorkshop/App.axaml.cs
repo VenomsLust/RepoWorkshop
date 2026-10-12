@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -12,6 +14,9 @@ namespace RepoWorkshop;
 
 /// <summary>The application: wires up the services, main window and API.</summary>
 public partial class App : Application {
+    /// <summary>The longest the app waits for the API to stop when exiting.</summary>
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(2);
+
     /// <summary>Applies the "Dark", "Light" or "System" theme.</summary>
     public static void ApplyTheme(string? theme) {
         if (Current is null) {
@@ -53,7 +58,8 @@ public partial class App : Application {
             ApiHost api = new(main, services);
             _ = api.ApplySettingsAsync();
             main.SettingsApplied += () => _ = api.ApplySettingsAsync();
-            desktop.Exit += (_, _) => api.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            // Stop the API on a worker thread: blocking the UI thread on async work that needs it deadlocks the exit.
+            desktop.Exit += (_, _) => Task.Run(() => api.DisposeAsync().AsTask()).Wait(ShutdownTimeout);
         }
 
         base.OnFrameworkInitializationCompleted();
